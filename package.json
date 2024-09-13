@@ -57,8 +57,7 @@
   "prettier": {
     "singleQuote": true
   },
-  "dependencies": {
-    "mapbox": "^1.0.0-beta10",
-    "mapbox-gl": "^3.6.0"
+  "peerDependencies": {
+    "mapbox-gl": "^3.5.2"
   }
 }

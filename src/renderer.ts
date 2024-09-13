@@ -427,17 +427,27 @@ export default class MapGLWindRenderer {
     gl.disable(gl.BLEND);
   }
 
-  public renderToTile(
-    gl: WebGLRenderingContext,
-    tileId: utils.TileID,
-    map: Map,
-  ) {
+  public renderToTile(gl: WebGLRenderingContext, tileId: utils.TileID) {
     const offsetScale = utils.getOffsetAndScaleForTileMapping(
       { x: 0, y: 0, z: 0 },
       tileId,
     );
     this.drawTexture(this.screenTexture as WebGLTexture, 0.6, offsetScale);
-    map.triggerRepaint();
+  }
+
+  public destroy() {
+    if (this.windTexture) {
+      this.gl.deleteTexture(this.windTexture);
+    }
+    if (this.particleStateTexture0) {
+      this.gl.deleteTexture(this.particleStateTexture0);
+    }
+    if (this.particleStateTexture1) {
+      this.gl.deleteTexture(this.particleStateTexture1);
+    }
+    this.gl.deleteFramebuffer(this.framebuffer);
+    this.gl.deleteTexture(this.colorRampTexture);
+    this.gl.deleteBuffer(this.quadBuffer);
   }
 }
 

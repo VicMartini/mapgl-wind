@@ -1,6 +1,7 @@
-import { Map as MapboxMap } from 'mapbox-gl';
+import mapboxgl from 'mapbox-gl';
 import { MapGLWindRenderer } from './index.js'; // Assuming this class exists
 import { TileID } from './utils.js';
+
 //TODO: Make this configurable
 const DEFAULT_WIND_DATA = {
   source: 'http://nomads.ncep.noaa.gov',
@@ -13,41 +14,63 @@ const DEFAULT_WIND_DATA = {
   vMax: 21.42,
 };
 
-export class WindLayer {
-  private mapInstance?: MapboxMap;
-  private gl?: WebGL2RenderingContext;
+interface WindLayerParams {
+  id: string;
+  windDataURL: string;
+  textureWidth: number;
+  textureHeight: number;
+  numParticles?: number;
+  fadeOpacity?: number;
+  maxzoom?: number;
+  minzoom?: number;
+}
+
+export class WindLayer implements mapboxgl.CustomLayerInterface {
+  id: string;
+  type: 'custom';
+  private map?: mapboxgl.Map;
   private renderer?: MapGLWindRenderer;
-  public maxZoom?: number;
+  public maxzoom?: number;
+  public minzoom?: number;
   private windDataURL: string;
   private textureWidth: number;
   private textureHeight: number;
   private numParticles: number;
   private fadeOpacity: number;
+  public renderingMode: '3d';
 
-  constructor(
-    windDataURL: string,
-    textureWidth: number,
-    textureHeight: number,
-    numParticles: number = 55000,
-    fadeOpacity: number = 0.93,
-
-    maxZoom?: number,
-  ) {
+  constructor({
+    id,
+    windDataURL,
+    textureWidth,
+    textureHeight,
+    maxzoom = 20,
+    minzoom = 0,
+    numParticles = 65536,
+    fadeOpacity = 0.996,
+  }: WindLayerParams) {
+    this.id = id;
+    this.type = 'custom';
+    this.renderingMode = '3d';
     this.windDataURL = windDataURL;
-    this.maxZoom = maxZoom;
+    this.maxzoom = maxzoom;
+    this.minzoom = minzoom;
     this.textureWidth = textureWidth;
     this.textureHeight = textureHeight;
     this.numParticles = numParticles;
     this.fadeOpacity = fadeOpacity;
   }
 
-  public onAdd(map: MapboxMap, gl: WebGL2RenderingContext) {
-    this.mapInstance = map;
+  public onAdd(map: mapboxgl.Map, gl: WebGL2RenderingContext) {
+    this.map = map;
+
     this.renderer = new MapGLWindRenderer(
       gl,
       this.textureWidth,
       this.textureHeight,
     );
+
+    this.map.setLayerZoomRange(this.id, this.minzoom ?? 0, this.maxzoom ?? 20);
 
     const image = new Image();
     image.crossOrigin = 'anonymous';
@@ -59,25 +82,39 @@ export class WindLayer {
     image.onload = () => {
       this?.renderer?.setWind(DEFAULT_WIND_DATA, image);
       this?.renderer?.resize();
+      this.renderer?.prerender();
+      this.renderer?.renderToTile(gl, { x: 0, y: 0, z: 0 });
+      this.map?.triggerRepaint();
     };
-    this.mapInstance.triggerRepaint();
   }
 
   public renderToTile(gl: WebGLRenderingContext, tileId: TileID) {
-    if (!this.mapInstance) {
+    if (!this.map) {
       throw new Error('Attempted to render to tile before adding layer to map');
     }
-    this.renderer?.renderToTile(gl, tileId, this.mapInstance);
+    this.renderer?.renderToTile(gl, tileId);
+    this.map.triggerRepaint();
   }
 
   public shouldRerenderTiles(): boolean {
     return true;
   }
   public prerender(_gl: WebGLRenderingContext, _matrix: number[]) {
-    this.renderer?.prerender();
+    try {
+      this.renderer?.prerender();
+    } catch (error) {
+      // TODO: Is there a better way to handle this?
+      console.warn(
+        'Warning: Mapbox tried to call prerender before the wind texture was loaded',
+      );
+    }
   }
 
   public render(_gl: WebGLRenderingContext, _matrix: number[]) {
     throw new Error('Method not implemented.');
+  }
+  public onRemove() {
+    console.log('onRemove');
+    this.renderer?.destroy();
   }
 }

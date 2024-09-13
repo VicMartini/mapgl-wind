@@ -479,13 +479,26 @@ var MapGLWindRenderer = class {
     this.drawTexture(this.screenTexture, 1);
     gl.disable(gl.BLEND);
   }
-  renderToTile(gl, tileId, map) {
+  renderToTile(gl, tileId) {
     const offsetScale = getOffsetAndScaleForTileMapping(
       { x: 0, y: 0, z: 0 },
       tileId
     );
     this.drawTexture(this.screenTexture, 0.6, offsetScale);
-    map.triggerRepaint();
+  }
+  destroy() {
+    if (this.windTexture) {
+      this.gl.deleteTexture(this.windTexture);
+    }
+    if (this.particleStateTexture0) {
+      this.gl.deleteTexture(this.particleStateTexture0);
+    }
+    if (this.particleStateTexture1) {
+      this.gl.deleteTexture(this.particleStateTexture1);
+    }
+    this.gl.deleteFramebuffer(this.framebuffer);
+    this.gl.deleteTexture(this.colorRampTexture);
+    this.gl.deleteBuffer(this.quadBuffer);
   }
 };
 function getColorRamp(colors) {
@@ -524,30 +537,47 @@ var DEFAULT_WIND_DATA = {
   vMax: 21.42
 };
 var WindLayer = class {
-  mapInstance;
-  gl;
+  id;
+  type;
+  map;
   renderer;
-  maxZoom;
+  maxzoom;
+  minzoom;
   windDataURL;
   textureWidth;
   textureHeight;
   numParticles;
   fadeOpacity;
-  constructor(windDataURL, textureWidth, textureHeight, numParticles = 55e3, fadeOpacity = 0.93, maxZoom) {
+  renderingMode;
+  constructor({
+    id,
+    windDataURL,
+    textureWidth,
+    textureHeight,
+    maxzoom = 20,
+    minzoom = 0,
+    numParticles = 65536,
+    fadeOpacity = 0.996
+  }) {
+    this.id = id;
+    this.type = "custom";
+    this.renderingMode = "3d";
     this.windDataURL = windDataURL;
-    this.maxZoom = maxZoom;
+    this.maxzoom = maxzoom;
+    this.minzoom = minzoom;
     this.textureWidth = textureWidth;
     this.textureHeight = textureHeight;
     this.numParticles = numParticles;
     this.fadeOpacity = fadeOpacity;
   }
   onAdd(map, gl) {
-    this.mapInstance = map;
+    this.map = map;
     this.renderer = new MapGLWindRenderer(
       gl,
       this.textureWidth,
       this.textureHeight
     );
+    this.map.setLayerZoomRange(this.id, this.minzoom ?? 0, this.maxzoom ?? 20);
     const image = new Image();
     image.crossOrigin = "anonymous";
     image.src = this.windDataURL;
@@ -556,23 +586,36 @@ var WindLayer = class {
     image.onload = () => {
       this?.renderer?.setWind(DEFAULT_WIND_DATA, image);
       this?.renderer?.resize();
+      this.renderer?.prerender();
+      this.renderer?.renderToTile(gl, { x: 0, y: 0, z: 0 });
+      this.map?.triggerRepaint();
     };
-    this.mapInstance.triggerRepaint();
   }
   renderToTile(gl, tileId) {
-    if (!this.mapInstance) {
+    if (!this.map) {
       throw new Error("Attempted to render to tile before adding layer to map");
     }
-    this.renderer?.renderToTile(gl, tileId, this.mapInstance);
+    this.renderer?.renderToTile(gl, tileId);
+    this.map.triggerRepaint();
   }
   shouldRerenderTiles() {
     return true;
   }
   prerender(_gl, _matrix) {
-    this.renderer?.prerender();
+    try {
+      this.renderer?.prerender();
+    } catch (error) {
+      console.warn(
+        "Warning: Mapbox tried to call prerender before the wind texture was loaded"
+      );
+    }
   }
   render(_gl, _matrix) {
     throw new Error("Method not implemented.");
+  }
+  onRemove() {
+    console.log("onRemove");
+    this.renderer?.destroy();
   }
 };
 // Annotate the CommonJS export names for ESM import in node:
