@@ -1,6 +1,6 @@
 "use strict";
 (() => {
-  // src/util.ts
+  // src/utils.ts
   function createShader(gl, type, source) {
     const shader = gl.createShader(type);
     if (!shader) {
@@ -38,7 +38,10 @@
     for (let i = 0; i < numUniforms; i++) {
       const uniform = gl.getActiveUniform(program, i);
       if (uniform) {
-        wrapper[uniform.name] = gl.getUniformLocation(program, uniform.name);
+        wrapper[uniform.name] = gl.getUniformLocation(
+          program,
+          uniform.name
+        );
       }
     }
     return wrapper;
@@ -54,7 +57,17 @@
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
     if (data instanceof Uint8Array) {
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        width,
+        height,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        data
+      );
     } else {
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, data);
     }
@@ -82,8 +95,27 @@
   function bindFramebuffer(gl, framebuffer, texture) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
     if (texture) {
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+      gl.framebufferTexture2D(
+        gl.FRAMEBUFFER,
+        gl.COLOR_ATTACHMENT0,
+        gl.TEXTURE_2D,
+        texture,
+        0
+      );
     }
+  }
+  function getOffsetAndScaleForTileMapping(windTile, targetTile) {
+    const zoomDiff = targetTile.z - windTile.z;
+    if (zoomDiff < 0) {
+      console.warn(
+        "Implementation here assumes that wind rasters are of lower or equal zoom than the terrain drape tiles."
+      );
+    }
+    const scale = 1 << zoomDiff;
+    const tileX = (targetTile.x % (1 << targetTile.z) + (1 << targetTile.z)) % (1 << targetTile.z);
+    const xTileOffset = ((windTile.x << zoomDiff) - tileX) / (1 << targetTile.z);
+    const yTileOffset = ((windTile.y << zoomDiff) - targetTile.y) / (1 << targetTile.z);
+    return [xTileOffset, yTileOffset, scale, scale];
   }
 
   // src/shaders/draw.vert.glsl
@@ -168,11 +200,23 @@
       this.screenProgram = createProgram(gl, quad_vert_default, screen_frag_default);
       this.tileProgram = createProgram(gl, tile_quad_vert_default, screen_frag_default);
       this.updateProgram = createProgram(gl, quad_vert_default, update_frag_default);
-      this.quadBuffer = createBuffer(gl, new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1]));
+      this.quadBuffer = createBuffer(
+        gl,
+        new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1])
+      );
       this.framebuffer = gl.createFramebuffer();
-      this.colorRampTexture = createTexture(this.gl, this.gl.LINEAR, getColorRamp(colors), 16, 16);
+      this.colorRampTexture = createTexture(
+        this.gl,
+        this.gl.LINEAR,
+        getColorRamp(colors),
+        16,
+        16
+      );
       this.setView([0, 0, 1, 1]);
       this.resize();
+    }
+    get ready() {
+      return !!this.windTexture;
     }
     texWidth() {
       return this.width || this.gl.canvas.width;
@@ -183,19 +227,45 @@
     resize() {
       const gl = this.gl;
       const emptyPixels = new Uint8Array(this.texWidth() * this.texHeight() * 4);
-      this.backgroundTexture = createTexture(gl, gl.NEAREST, emptyPixels, this.texWidth(), this.texHeight());
-      this.screenTexture = createTexture(gl, gl.NEAREST, emptyPixels, this.texWidth(), this.texHeight());
+      this.backgroundTexture = createTexture(
+        gl,
+        gl.NEAREST,
+        emptyPixels,
+        this.texWidth(),
+        this.texHeight()
+      );
+      this.screenTexture = createTexture(
+        gl,
+        gl.NEAREST,
+        emptyPixels,
+        this.texWidth(),
+        this.texHeight()
+      );
     }
     set numParticles(numParticles) {
       const gl = this.gl;
-      const particleRes = this.particleStateResolution = Math.ceil(Math.sqrt(numParticles));
+      const particleRes = this.particleStateResolution = Math.ceil(
+        Math.sqrt(numParticles)
+      );
       this._numParticles = particleRes * particleRes;
       const particleState = new Uint8Array(this._numParticles * 4);
       for (let i = 0; i < particleState.length; i++) {
         particleState[i] = Math.floor(Math.random() * 256);
       }
-      this.particleStateTexture0 = createTexture(gl, gl.NEAREST, particleState, particleRes, particleRes);
-      this.particleStateTexture1 = createTexture(gl, gl.NEAREST, particleState, particleRes, particleRes);
+      this.particleStateTexture0 = createTexture(
+        gl,
+        gl.NEAREST,
+        particleState,
+        particleRes,
+        particleRes
+      );
+      this.particleStateTexture1 = createTexture(
+        gl,
+        gl.NEAREST,
+        particleState,
+        particleRes,
+        particleRes
+      );
       const particleIndices = new Float32Array(this._numParticles);
       for (let i = 0; i < this._numParticles; i++)
         particleIndices[i] = i;
@@ -222,7 +292,24 @@
         const maxY = mercY(bbox[1]);
         const kx = 2 / (maxX - minX);
         const ky = 2 / (maxY - minY);
-        this.matrix = new Float32Array([kx, 0, 0, 0, 0, ky, 0, 0, 0, 0, 1, 0, -1 - minX * kx, -1 - minY * ky, 0, 1]);
+        this.matrix = new Float32Array([
+          kx,
+          0,
+          0,
+          0,
+          0,
+          ky,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          -1 - minX * kx,
+          -1 - minY * ky,
+          0,
+          1
+        ]);
       }
     }
     draw() {
@@ -271,11 +358,18 @@
     drawParticles() {
       const gl = this.gl;
       if (!this.particleIndexBuffer || !this.particleStateResolution || !this.windData || !this.matrix || !this.bbox || !this._numParticles) {
-        throw new Error("Missing required particle data: " + (!this.particleIndexBuffer ? "particle index buffer, " : "") + (!this.particleStateResolution ? "particle state resolution, " : "") + (!this.windData ? "wind data, " : "") + (!this.matrix ? "matrix, " : "") + (!this.bbox ? "bounding box, " : "") + (!this._numParticles ? "number of particles" : ""));
+        throw new Error(
+          "Missing required particle data: " + (!this.particleIndexBuffer ? "particle index buffer, " : "") + (!this.particleStateResolution ? "particle state resolution, " : "") + (!this.windData ? "wind data, " : "") + (!this.matrix ? "matrix, " : "") + (!this.bbox ? "bounding box, " : "") + (!this._numParticles ? "number of particles" : "")
+        );
       }
       const program = this.drawProgram;
       gl.useProgram(program.program);
-      bindAttribute(gl, this.particleIndexBuffer, program.a_index, 1);
+      bindAttribute(
+        gl,
+        this.particleIndexBuffer,
+        program.a_index,
+        1
+      );
       bindTexture(gl, this.colorRampTexture, 2);
       gl.uniform1i(program.u_wind, 0);
       gl.uniform1i(program.u_particles, 1);
@@ -290,10 +384,17 @@
     updateParticles() {
       const gl = this.gl;
       if (!this.particleStateResolution || !this.framebuffer || !this.particleStateTexture1 || !this.windData || !this.bbox) {
-        throw new Error("Missing required particle state data: " + (!this.particleStateResolution ? "particle state resolution, " : "") + (!this.framebuffer ? "framebuffer, " : "") + (!this.particleStateTexture1 ? "particle state texture 1" : "") + (!this.windData ? "wind data, " : "") + (!this.bbox ? "bounding box" : ""));
+        throw new Error(
+          "Missing required particle state data: " + (!this.particleStateResolution ? "particle state resolution, " : "") + (!this.framebuffer ? "framebuffer, " : "") + (!this.particleStateTexture1 ? "particle state texture 1" : "") + (!this.windData ? "wind data, " : "") + (!this.bbox ? "bounding box" : "")
+        );
       }
       bindFramebuffer(gl, this.framebuffer, this.particleStateTexture1);
-      gl.viewport(0, 0, this.particleStateResolution, this.particleStateResolution);
+      gl.viewport(
+        0,
+        0,
+        this.particleStateResolution,
+        this.particleStateResolution
+      );
       const program = this.updateProgram;
       gl.useProgram(program.program);
       bindAttribute(gl, this.quadBuffer, program.a_pos, 2);
@@ -312,10 +413,61 @@
       this.particleStateTexture0 = this.particleStateTexture1;
       this.particleStateTexture1 = temp;
     }
+    prerender() {
+      if (!this.windTexture || !this.particleStateTexture0) {
+        throw new Error("No wind texture or particle state texture");
+      }
+      const gl = this.gl;
+      gl.disable(gl.BLEND);
+      const temp = this.backgroundTexture;
+      this.backgroundTexture = this.screenTexture;
+      this.screenTexture = temp;
+      bindTexture(gl, this.windTexture, 0);
+      bindTexture(gl, this.particleStateTexture0, 1);
+      this.updateParticles();
+      gl.disable(gl.BLEND);
+      bindTexture(gl, this.windTexture, 0);
+      bindTexture(gl, this.particleStateTexture0, 1);
+      gl.disable(gl.DEPTH_TEST);
+      gl.disable(gl.STENCIL_TEST);
+      bindFramebuffer(gl, this.framebuffer, this.screenTexture);
+      gl.viewport(0, 0, this.texWidth(), this.texHeight());
+      if (!this.backgroundTexture) {
+        throw new Error("No background texture");
+      }
+      this.drawTexture(this.backgroundTexture, this.fadeOpacity);
+      this.drawParticles();
+    }
+    render() {
+      if (!this.screenTexture) {
+        throw new Error("No screen texture");
+      }
+      const gl = this.gl;
+      gl.disable(gl.DEPTH_TEST);
+      gl.disable(gl.STENCIL_TEST);
+      bindFramebuffer(gl, null);
+      gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      this.drawTexture(this.screenTexture, 1);
+      gl.disable(gl.BLEND);
+    }
+    renderToTile(gl, tileId, map) {
+      const offsetScale = getOffsetAndScaleForTileMapping(
+        { x: 0, y: 0, z: 0 },
+        tileId
+      );
+      this.drawTexture(this.screenTexture, 0.6, offsetScale);
+      map.triggerRepaint();
+    }
   };
   function getColorRamp(colors) {
     const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d", { antialias: true });
+    const ctx = canvas.getContext("2d", {
+      antialias: true
+    });
     if (!ctx) {
       throw new Error("Failed to get 2D context");
     }
@@ -336,112 +488,66 @@
   }
 
   // src/layer.ts
-  var wind;
-  var mapInstance;
-  var WindLayer = {
-    id: "wind",
-    type: "custom",
-    maxzoom: 1,
-    onAdd: (map, gl) => {
-      mapInstance = map;
-      console.log("onAdd");
-      wind = new MapGLWindRenderer(gl, 16384, 16384);
+  var DEFAULT_WIND_DATA = {
+    source: "http://nomads.ncep.noaa.gov",
+    date: "2016-11-20T00:00Z",
+    width: 360,
+    height: 180,
+    uMin: -21.32,
+    uMax: 26.8,
+    vMin: -21.57,
+    vMax: 21.42
+  };
+  var WindLayer = class {
+    mapInstance;
+    gl;
+    renderer;
+    maxZoom;
+    windDataURL;
+    textureWidth;
+    textureHeight;
+    numParticles;
+    fadeOpacity;
+    constructor(windDataURL, textureWidth, textureHeight, numParticles = 55e3, fadeOpacity = 0.93, maxZoom) {
+      this.windDataURL = windDataURL;
+      this.maxZoom = maxZoom;
+      this.textureWidth = textureWidth;
+      this.textureHeight = textureHeight;
+      this.numParticles = numParticles;
+      this.fadeOpacity = fadeOpacity;
+    }
+    onAdd(map, gl) {
+      this.mapInstance = map;
+      this.renderer = new MapGLWindRenderer(
+        gl,
+        this.textureWidth,
+        this.textureHeight
+      );
       const image = new Image();
       image.crossOrigin = "anonymous";
-      image.src = "http://localhost:8001/image/";
-      let windData = {
-        source: "http://nomads.ncep.noaa.gov",
-        date: "2016-11-20T00:00Z",
-        width: 360,
-        height: 180,
-        uMin: -21.32,
-        uMax: 26.8,
-        vMin: -21.57,
-        vMax: 21.42
+      image.src = this.windDataURL;
+      this.renderer.numParticles = this.numParticles;
+      this.renderer.fadeOpacity = this.fadeOpacity;
+      image.onload = () => {
+        this?.renderer?.setWind(DEFAULT_WIND_DATA, image);
+        this?.renderer?.resize();
       };
-      wind.numParticles = 55e3;
-      wind.fadeOpacity = 0.93;
-      image.onload = function() {
-        wind.setWind(windData, image);
-        wind.resize();
-      };
-      mapInstance.triggerRepaint();
-    },
-    renderToTile: (gl, tileId2) => {
-      console.log("renderToTile");
-      if (wind.windData) {
-        const offsetScale = getOffsetAndScaleForTileMapping(
-          { x: 0, y: 0, z: 0 },
-          tileId2
-        );
-        wind.drawTexture(wind.screenTexture, 0.6, offsetScale);
-        mapInstance.triggerRepaint();
+      this.mapInstance.triggerRepaint();
+    }
+    renderToTile(gl, tileId) {
+      if (!this.mapInstance) {
+        throw new Error("Attempted to render to tile before adding layer to map");
       }
-    },
-    shouldRerenderTiles: () => {
+      this.renderer?.renderToTile(gl, tileId, this.mapInstance);
+    }
+    shouldRerenderTiles() {
       return true;
-    },
-    prerender: (gl, matrix) => {
-      wind.windTexture && prerender();
-    },
-    render: (gl, matrix) => {
-      console.log("renderToTile");
-      if (wind.windData) {
-        const offsetScale = getOffsetAndScaleForTileMapping(
-          { x: 0, y: 0, z: 0 },
-          tileId
-        );
-        wind.drawTexture(wind.screenTexture, 0.6, offsetScale);
-        mapInstance.triggerRepaint();
-      }
+    }
+    prerender(_gl, _matrix) {
+      this.renderer?.prerender();
+    }
+    render(_gl, _matrix) {
+      throw new Error("Method not implemented.");
     }
   };
-  function getOffsetAndScaleForTileMapping(windTile, targetTile) {
-    const zoomDiff = targetTile.z - windTile.z;
-    if (zoomDiff < 0) {
-      console.warn(
-        "Implementation here assumes that wind rasters are of lower or equal zoom than the terrain drape tiles."
-      );
-    }
-    const scale = 1 << zoomDiff;
-    const tileX = (targetTile.x % (1 << targetTile.z) + (1 << targetTile.z)) % (1 << targetTile.z);
-    const xTileOffset = ((windTile.x << zoomDiff) - tileX) / (1 << targetTile.z);
-    const yTileOffset = ((windTile.y << zoomDiff) - targetTile.y) / (1 << targetTile.z);
-    return [xTileOffset, yTileOffset, scale, scale];
-  }
-  function bindTexture2(gl, texture, unit) {
-    gl.activeTexture(gl.TEXTURE0 + unit);
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-  }
-  function bindFramebuffer2(gl, framebuffer, texture) {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-    if (texture) {
-      gl.framebufferTexture2D(
-        gl.FRAMEBUFFER,
-        gl.COLOR_ATTACHMENT0,
-        gl.TEXTURE_2D,
-        texture,
-        0
-      );
-    }
-  }
-  function prerender() {
-    var gl = wind.gl;
-    gl.disable(gl.BLEND);
-    var temp = wind.backgroundTexture;
-    wind.backgroundTexture = wind.screenTexture;
-    wind.screenTexture = temp;
-    bindTexture2(gl, wind.windTexture, 0);
-    bindTexture2(gl, wind.particleStateTexture0, 1);
-    wind.updateParticles();
-    gl.disable(gl.BLEND);
-    bindTexture2(gl, wind.windTexture, 0);
-    bindTexture2(gl, wind.particleStateTexture0, 1);
-    gl.disable(gl.DEPTH_TEST);
-    gl.disable(gl.STENCIL_TEST);
-    bindFramebuffer2(gl, wind.framebuffer, wind.screenTexture);
-    gl.viewport(0, 0, wind.texWidth(), wind.texHeight());
-    wind.drawTexture(wind.backgroundTexture, wind.fadeOpacity);
-    wind.drawParticles();
-  }
 })();

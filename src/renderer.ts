@@ -1,4 +1,4 @@
-import * as util from './util.js';
+import * as utils from './utils.js';
 
 import drawVert from './shaders/draw.vert.glsl';
 import drawFrag from './shaders/draw.frag.glsl';
@@ -8,6 +8,7 @@ import tileQuadVert from './shaders/tile_quad.vert.glsl';
 
 import screenFrag from './shaders/screen.frag.glsl';
 import updateFrag from './shaders/update.frag.glsl';
+import { Map } from 'mapbox-gl';
 
 interface RampColors {
   [key: number]: string;
@@ -45,10 +46,10 @@ export default class MapGLWindRenderer {
   private dropRateBump: number;
   private _numParticles?: number;
   private particleStateResolution?: number;
-  private drawProgram: any;
-  private screenProgram: any;
-  private tileProgram: any;
-  private updateProgram: any;
+  private drawProgram: utils.WebGLProgramWrapper;
+  private screenProgram: utils.WebGLProgramWrapper;
+  private tileProgram: utils.WebGLProgramWrapper;
+  private updateProgram: utils.WebGLProgramWrapper;
   private quadBuffer: WebGLBuffer;
   private framebuffer: WebGLFramebuffer;
   private backgroundTexture?: WebGLTexture;
@@ -78,17 +79,17 @@ export default class MapGLWindRenderer {
     this.dropRateBump = 0.01; // drop rate increase relative to individual particle speed
     this.numParticles = 65536;
 
-    this.drawProgram = util.createProgram(gl, drawVert, drawFrag);
-    this.screenProgram = util.createProgram(gl, quadVert, screenFrag);
-    this.tileProgram = util.createProgram(gl, tileQuadVert, screenFrag);
-    this.updateProgram = util.createProgram(gl, quadVert, updateFrag);
+    this.drawProgram = utils.createProgram(gl, drawVert, drawFrag);
+    this.screenProgram = utils.createProgram(gl, quadVert, screenFrag);
+    this.tileProgram = utils.createProgram(gl, tileQuadVert, screenFrag);
+    this.updateProgram = utils.createProgram(gl, quadVert, updateFrag);
 
-    this.quadBuffer = util.createBuffer(
+    this.quadBuffer = utils.createBuffer(
       gl,
       new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1]),
     );
     this.framebuffer = gl.createFramebuffer()!;
-    this.colorRampTexture = util.createTexture(
+    this.colorRampTexture = utils.createTexture(
       this.gl,
       this.gl.LINEAR,
       getColorRamp(colors),
@@ -115,14 +116,14 @@ export default class MapGLWindRenderer {
     const gl = this.gl;
     const emptyPixels = new Uint8Array(this.texWidth() * this.texHeight() * 4);
     // screen textures to hold the drawn screen for the previous and the current frame
-    this.backgroundTexture = util.createTexture(
+    this.backgroundTexture = utils.createTexture(
       gl,
       gl.NEAREST,
       emptyPixels,
       this.texWidth(),
       this.texHeight(),
     );
-    this.screenTexture = util.createTexture(
+    this.screenTexture = utils.createTexture(
       gl,
       gl.NEAREST,
       emptyPixels,
@@ -145,14 +146,14 @@ export default class MapGLWindRenderer {
       particleState[i] = Math.floor(Math.random() * 256); // randomize the initial particle positions
     }
     // textures to hold the particle state for the current and the next frame
-    this.particleStateTexture0 = util.createTexture(
+    this.particleStateTexture0 = utils.createTexture(
       gl,
       gl.NEAREST,
       particleState,
       particleRes,
       particleRes,
     );
-    this.particleStateTexture1 = util.createTexture(
+    this.particleStateTexture1 = utils.createTexture(
       gl,
       gl.NEAREST,
       particleState,
@@ -162,7 +163,7 @@ export default class MapGLWindRenderer {
 
     const particleIndices = new Float32Array(this._numParticles);
     for (let i = 0; i < this._numParticles; i++) particleIndices[i] = i;
-    this.particleIndexBuffer = util.createBuffer(gl, particleIndices);
+    this.particleIndexBuffer = utils.createBuffer(gl, particleIndices);
   }
   get numParticles(): number {
     if (!this._numParticles) {
@@ -173,7 +174,7 @@ export default class MapGLWindRenderer {
 
   setWind(data: WindData, image: HTMLImageElement | Uint8Array): void {
     this.windData = data;
-    this.windTexture = util.createTexture(this.gl, this.gl.LINEAR, image);
+    this.windTexture = utils.createTexture(this.gl, this.gl.LINEAR, image);
   }
 
   setView(bbox: number[], matrix?: Float32Array): void {
@@ -219,8 +220,8 @@ export default class MapGLWindRenderer {
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.STENCIL_TEST);
 
-    util.bindTexture(gl, this.windTexture, 0);
-    util.bindTexture(gl, this.particleStateTexture0, 1);
+    utils.bindTexture(gl, this.windTexture, 0);
+    utils.bindTexture(gl, this.particleStateTexture0, 1);
 
     this.drawScreen();
     this.updateParticles();
@@ -232,13 +233,13 @@ export default class MapGLWindRenderer {
       throw new Error('No background texture or screen texture');
     }
     // draw the screen into a temporary framebuffer to retain it as the background on the next frame
-    util.bindFramebuffer(gl, this.framebuffer, this.screenTexture);
+    utils.bindFramebuffer(gl, this.framebuffer, this.screenTexture);
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
     this.drawTexture(this.backgroundTexture, this.fadeOpacity);
     this.drawParticles();
 
-    util.bindFramebuffer(gl, null);
+    utils.bindFramebuffer(gl, null);
     // enable blending to support drawing on top of an existing background (e.g. a map)
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -260,9 +261,9 @@ export default class MapGLWindRenderer {
     const program = offsetScale ? this.tileProgram : this.screenProgram;
     gl.useProgram(program.program);
 
-    util.bindAttribute(gl, this.quadBuffer, program.a_pos, 2);
-    util.bindTexture(gl, texture, 2);
-    gl.uniform1i(program.u_screen, 2);
+    utils.bindAttribute(gl, this.quadBuffer, program.a_pos as number, 2);
+    utils.bindTexture(gl, texture, 2);
+    gl.uniform1i(program.u_screen as number, 2);
     gl.uniform1f(program.u_opacity, opacity);
     if (offsetScale) {
       gl.uniform4fv(program.u_offset_scale, offsetScale);
@@ -294,8 +295,13 @@ export default class MapGLWindRenderer {
     const program = this.drawProgram;
     gl.useProgram(program.program);
 
-    util.bindAttribute(gl, this.particleIndexBuffer, program.a_index, 1);
-    util.bindTexture(gl, this.colorRampTexture, 2);
+    utils.bindAttribute(
+      gl,
+      this.particleIndexBuffer,
+      program.a_index as number,
+      1,
+    );
+    utils.bindTexture(gl, this.colorRampTexture, 2);
 
     gl.uniform1i(program.u_wind, 0);
     gl.uniform1i(program.u_particles, 1);
@@ -328,7 +334,7 @@ export default class MapGLWindRenderer {
           (!this.bbox ? 'bounding box' : ''),
       );
     }
-    util.bindFramebuffer(gl, this.framebuffer, this.particleStateTexture1);
+    utils.bindFramebuffer(gl, this.framebuffer, this.particleStateTexture1);
     gl.viewport(
       0,
       0,
@@ -339,7 +345,7 @@ export default class MapGLWindRenderer {
     const program = this.updateProgram;
     gl.useProgram(program.program);
 
-    util.bindAttribute(gl, this.quadBuffer, program.a_pos, 2);
+    utils.bindAttribute(gl, this.quadBuffer, program.a_pos as number, 2);
 
     gl.uniform1i(program.u_wind, 0);
     gl.uniform1i(program.u_particles, 1);
@@ -359,6 +365,79 @@ export default class MapGLWindRenderer {
     const temp = this.particleStateTexture0;
     this.particleStateTexture0 = this.particleStateTexture1;
     this.particleStateTexture1 = temp;
+  }
+
+  public prerender() {
+    if (!this.windTexture || !this.particleStateTexture0) {
+      throw new Error('No wind texture or particle state texture');
+    }
+
+    const gl = this.gl;
+
+    gl.disable(gl.BLEND);
+
+    // save the current screen as the background for the next frame
+    const temp = this.backgroundTexture;
+    this.backgroundTexture = this.screenTexture;
+    this.screenTexture = temp;
+
+    utils.bindTexture(gl, this.windTexture, 0);
+    utils.bindTexture(gl, this.particleStateTexture0, 1);
+
+    this.updateParticles();
+
+    gl.disable(gl.BLEND);
+
+    utils.bindTexture(gl, this.windTexture, 0);
+    utils.bindTexture(gl, this.particleStateTexture0, 1);
+
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.STENCIL_TEST);
+
+    // draw the screen into a temporary framebuffer to retain it as the background on the next frame
+    utils.bindFramebuffer(gl, this.framebuffer, this.screenTexture);
+    gl.viewport(0, 0, this.texWidth(), this.texHeight());
+    if (!this.backgroundTexture) {
+      throw new Error('No background texture');
+    }
+
+    this.drawTexture(this.backgroundTexture, this.fadeOpacity);
+    this.drawParticles();
+  }
+
+  public render() {
+    if (!this.screenTexture) {
+      throw new Error('No screen texture');
+    }
+
+    const gl = this.gl;
+
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.STENCIL_TEST);
+
+    // Wind drawScreen:
+    utils.bindFramebuffer(gl, null);
+    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    // enable blending to support drawing on top of an existing background (e.g. a map)
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    this.drawTexture(this.screenTexture, 1.0);
+    gl.disable(gl.BLEND);
+  }
+
+  public renderToTile(
+    gl: WebGLRenderingContext,
+    tileId: utils.TileID,
+    map: Map,
+  ) {
+    const offsetScale = utils.getOffsetAndScaleForTileMapping(
+      { x: 0, y: 0, z: 0 },
+      tileId,
+    );
+    this.drawTexture(this.screenTexture as WebGLTexture, 0.6, offsetScale);
+    map.triggerRepaint();
   }
 }
 

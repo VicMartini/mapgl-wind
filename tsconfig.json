@@ -13,7 +13,8 @@
     "declaration": true,
     "declarationMap": true,
     "lib": ["ES2019", "dom"],
-    "allowJs": true
-
-  }
+    "allowJs": true,
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
 }
