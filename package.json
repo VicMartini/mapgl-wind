@@ -1,41 +1,62 @@
 {
-  "name": "webgl-wind",
+  "name": "mapgl-wind",
   "version": "0.0.0",
   "description": "",
-  "main": "index.js",
+  "type": "module",
+  "license": "ISC",
+  "main": "dist/index.cjs",
+  "types": "dist/index.d.ts",
+  "module": "dist/index.js",
+  "exports": {
+    ".": {
+      "require": "./dist/index.cjs",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./*": {
+      "require": "./dist/*/index.cjs",
+      "import": "./dist/*/index.js",
+      "types": "./dist/*/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
   "scripts": {
-    "build": "rollup -c",
-    "watch": "rollup -c -w",
-    "test": "eslint src/*.js demo/index.js data/prepare.js",
-    "serve": "st -nc -i index.html",
-    "start": "run-p serve watch"
+    "prettify": "prettier --write \"./**/*.{js,jsx,ts,tsx,json}\"",
+    "build": "tsup --tsconfig tsconfig.json src/index.ts --format cjs,esm,iife --dts --clean",
+    "autobundle": "tsup src/index.ts --format cjs,esm,iife --dts --clean --watch",
+    "lint:typecheck": "tsc --noEmit",
+    "lint:eslint": "eslint src/ --ext .ts",
+    "lint:prettier": "prettier --check src/",
+    "lint:spellcheck": "cspell --no-progress --config cspell.json ./src/**/*.ts",
+    "lint:format": "prettier --write .",
+    "lint": "npm run lint:eslint && npm run lint:prettier && npm run lint:spellcheck && npm run lint:typecheck",
+    "test": "jest"
   },
   "keywords": [],
-  "author": "Vladimir Agafonkin",
-  "license": "ISC",
+  "contributors": [
+    "Vladimir Agafonkin",
+    "Victor Martini"
+  ],
   "devDependencies": {
-    "eslint": "^3.15.0",
-    "eslint-config-mourner": "^2.0.1",
+    "@typescript-eslint/eslint-plugin": "^6.13.1",
+    "esbuild-plugin-glsl": "^1.2.2",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^8.8.0",
+    "eslint-plugin-prettier": "^4.2.1",
     "npm-run-all": "^4.0.1",
     "pngjs": "^3.0.0",
-    "rollup": "^0.41.4",
-    "rollup-plugin-buble": "^0.15.0",
-    "rollup-plugin-string": "^2.0.2",
-    "rollup-watch": "^3.2.2",
-    "st": "^1.2.0"
+    "st": "^1.2.0",
+    "tsup": "^6.7.0",
+    "typescript": "^4.9.5"
   },
-  "eslintConfig": {
-    "extends": "mourner",
-    "parserOptions": {
-      "sourceType": "module"
-    },
-    "globals": {
-      "dat": false,
-      "WindGL": false
-    },
-    "rules": {
-      "no-var": 2,
-      "prefer-const": 2
-    }
+  "prettier": {
+    "singleQuote": true
+  },
+  "dependencies": {
+    "mapbox": "^1.0.0-beta10",
+    "mapbox-gl": "^3.6.0"
   }
 }

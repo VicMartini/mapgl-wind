@@ -1,1 +1,6 @@
-yarn.lock
+node_modules
+dist
+.env
+.vscode
+.npmrc
+.DS_Store

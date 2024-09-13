@@ -9,7 +9,16 @@ varying vec2 v_particle_pos;
 
 void main() {
     vec2 velocity = mix(u_wind_min, u_wind_max, texture2D(u_wind, v_particle_pos).rg);
+
     float speed_t = length(velocity) / length(u_wind_max);
+
+    vec2 center = gl_PointCoord - 0.5;
+    float dist = length(center * 2.0);
+
+    // Discard fragments outside the circle
+    if (dist > 1.0) {
+        discard;
+    }
 
     // color ramp is encoded in a 16x16 texture
     vec2 ramp_pos = vec2(
