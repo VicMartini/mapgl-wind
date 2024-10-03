@@ -27,7 +27,7 @@
     "prettify": "prettier --write \"./**/*.{js,jsx,ts,tsx,json}\"",
     "build": "tsup --tsconfig tsconfig.json src/index.ts --format cjs,esm,iife --dts --clean",
     "autobundle": "tsup src/index.ts --format cjs,esm,iife --dts --clean --watch",
-    "lint:typecheck": "tsc --noEmit",
+    "lint:typecheck": "tsc --noEmit --project tsconfig.json",
     "lint:eslint": "eslint src/ --ext .ts",
     "lint:prettier": "prettier --check src/",
     "lint:spellcheck": "cspell --no-progress --config cspell.json ./src/**/*.ts",

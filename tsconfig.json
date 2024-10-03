@@ -14,6 +14,7 @@
     "declarationMap": true,
     "lib": ["ES2019", "dom"],
     "allowJs": true,
+    "skipLibCheck": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
