@@ -9,7 +9,7 @@ import tileQuadVert from './shaders/tile_quad.vert.glsl';
 import screenFrag from './shaders/screen.frag.glsl';
 import updateFrag from './shaders/update.frag.glsl';
 
-import mapboxgl, { LngLatBounds } from 'mapbox-gl';
+import { LngLatBounds } from 'mapbox-gl';
 import { Map, ProjectionSpecification } from 'mapbox-gl';
 
 export interface RampColors {
@@ -380,12 +380,12 @@ export default class GlobeWindRenderer {
 
   public prerender(
     gl: WebGL2RenderingContext,
-    matrix: Array<number>,
-    projection?: ProjectionSpecification,
-    projectionToMercatorMatrix?: Array<number>,
-    projectionToMercatorTransition?: number,
-    centerInMercator?: Array<number>,
-    pixelsPerMeterRatio?: number,
+    _matrix: Array<number>,
+    _projection?: ProjectionSpecification,
+    _projectionToMercatorMatrix?: Array<number>,
+    _projectionToMercatorTransition?: number,
+    _centerInMercator?: Array<number>,
+    _pixelsPerMeterRatio?: number,
   ) {
     if (!this.windTexture || !this.particleStateTexture0) {
       throw new Error('No wind texture or particle state texture');
@@ -437,7 +437,11 @@ export default class GlobeWindRenderer {
       southEast.lat,
     ]);
   }
-  public render(gl: WebGL2RenderingContext, matrix: number[]) {}
+  public render(_gl: WebGL2RenderingContext, _matrix: number[]) {
+    throw new Error(
+      'Not implemented, this renderer is meant to be used only for the globe mode',
+    );
+  }
 
   public renderToTile(gl: WebGLRenderingContext, tileId: utils.TileID) {
     const offsetScale = utils.getOffsetAndScaleForTileMapping(

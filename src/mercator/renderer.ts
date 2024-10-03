@@ -13,7 +13,7 @@ import updateFrag from './shaders/update.frag.glsl';
 import mercatorVert from './shaders/mercator.vert.glsl';
 import mercatorFrag from './shaders/mercator.frag.glsl';
 
-import mapboxgl, { LngLatBounds } from 'mapbox-gl';
+import mapboxgl from 'mapbox-gl';
 import { Map, ProjectionSpecification } from 'mapbox-gl';
 
 export interface RampColors {
@@ -109,8 +109,6 @@ export default class MapGLWindRenderer {
       const bounds = this.map.getBounds();
       const nw = bounds!.getNorthWest();
       const se = bounds!.getSouthEast();
-
-      const center = this.map.getCenter();
 
       const minX = normalizeLongitude(nw.lng);
       const minY = normalizeLatitude(nw.lat);
@@ -307,7 +305,7 @@ export default class MapGLWindRenderer {
     gl.useProgram(borderProgram.program);
   }
 
-  updateParticles(gl: WebGL2RenderingContext, matrix: number[]): void {
+  updateParticles(gl: WebGL2RenderingContext, _matrix: number[]): void {
     if (
       !this.particleStateResolution ||
       !this.framebuffer ||
@@ -360,11 +358,11 @@ export default class MapGLWindRenderer {
   public prerender(
     gl: WebGL2RenderingContext,
     matrix: Array<number>,
-    projection?: ProjectionSpecification,
-    projectionToMercatorMatrix?: Array<number>,
-    projectionToMercatorTransition?: number,
-    centerInMercator?: Array<number>,
-    pixelsPerMeterRatio?: number,
+    _projection?: ProjectionSpecification,
+    _projectionToMercatorMatrix?: Array<number>,
+    _projectionToMercatorTransition?: number,
+    _centerInMercator?: Array<number>,
+    _pixelsPerMeterRatio?: number,
   ) {
     if (!this.windTexture || !this.particleStateTexture0) {
       throw new Error('No wind texture or particle state texture');
@@ -428,11 +426,11 @@ export default class MapGLWindRenderer {
   public render(
     gl: WebGL2RenderingContext,
     matrix: Array<number>,
-    projection?: ProjectionSpecification,
-    projectionToMercatorMatrix?: Array<number>,
-    projectionToMercatorTransition?: number,
-    centerInMercator?: Array<number>,
-    pixelsPerMeterRatio?: number,
+    _projection?: ProjectionSpecification,
+    _projectionToMercatorMatrix?: Array<number>,
+    _projectionToMercatorTransition?: number,
+    _centerInMercator?: Array<number>,
+    _pixelsPerMeterRatio?: number,
   ) {
     if (!this.screenTexture) {
       throw new Error('No screen texture');
@@ -440,8 +438,6 @@ export default class MapGLWindRenderer {
 
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.STENCIL_TEST);
-
-    const centerLngLat = this.map.getCenter();
 
     const quadBuffer = utils.createBuffer(gl, this.getQuadFromViewport());
 
@@ -523,22 +519,6 @@ const normalizeLongitude = (lng: number): number => {
 const normalizeLatitude = (lat: number): number => {
   return 1.0 - (lat + 90) / 180;
 };
-
-const denormalizeLongitude = (normalizedLng: number): number => {
-  return normalizedLng * 360 - 180;
-};
-
-const denormalizeLatitude = (normalizedLat: number): number => {
-  return (1.0 - normalizedLat) * 180 - 90;
-};
-
-function mercatorProjection(y: number): number {
-  const radians = (y * 180 - 90) * (Math.PI / 180);
-  const s = Math.sin(radians);
-  const projectedY = (Math.log((1 + s) / (1 - s)) / (2 * Math.PI) + 1) / 2;
-
-  return projectedY;
-}
 
 function mercY(y: number) {
   const s = Math.sin(Math.PI * (y - 0.5));
