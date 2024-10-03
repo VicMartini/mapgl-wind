@@ -1,0 +1,21 @@
+{
+    "version": "0.2",
+    "language": "en",
+    "words": [
+        "mkdirp",
+        "tsmerge",
+        "githubusercontent",
+        "streetsidesoftware",
+        "vsmarketplacebadge",
+        "visualstudio",
+        "glsl",
+        "mapbox",
+        "bbox",
+        "moveend",
+        "mapboxgl"
+    ],
+
+    "flagWords": [
+        "hte"
+    ]
+}
