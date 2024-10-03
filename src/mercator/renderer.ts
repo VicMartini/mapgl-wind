@@ -1,31 +1,37 @@
-import * as utils from './utils.js';
+import * as utils from '../utils.js';
 
 import drawVert from './shaders/draw.vert.glsl';
 import drawFrag from './shaders/draw.frag.glsl';
 
 import quadVert from './shaders/quad.vert.glsl';
+
 import tileQuadVert from './shaders/tile_quad.vert.glsl';
 
 import screenFrag from './shaders/screen.frag.glsl';
 import updateFrag from './shaders/update.frag.glsl';
-import { Map } from 'mapbox-gl';
 
-interface RampColors {
+import mercatorVert from './shaders/mercator.vert.glsl';
+import mercatorFrag from './shaders/mercator.frag.glsl';
+
+import mapboxgl, { LngLatBounds } from 'mapbox-gl';
+import { Map, ProjectionSpecification } from 'mapbox-gl';
+
+export interface RampColors {
   [key: number]: string;
 }
 
 const defaultRampColors: RampColors = {
-  0.0: '#e6f3ff', // Light sky blue
-  0.1: '#d1e8ff', // Pale blue
-  0.2: '#b8e2ff', // Light azure
-  0.3: '#a0dcff', // Light cyan
-  0.4: '#8ad6ff', // Light turquoise
-  0.5: '#75d0ff', // Light cerulean
-  0.6: '#61caff', // Light sky
-  0.7: '#4dc4ff', // Light cornflower
-  0.8: '#38beff', // Light steel blue
-  0.9: '#24b8ff', // Light dodger blue
-  1.0: '#10b2ff', // Light deep sky blue
+  0.0: '#ff0000', // Red
+  0.1: '#ff0000', // Red
+  0.2: '#ff0000', // Red
+  0.3: '#ff0000', // Red
+  0.4: '#ff0000', // Red
+  0.5: '#ff0000', // Red
+  0.6: '#ff0000', // Red
+  0.7: '#ff0000', // Red
+  0.8: '#ff0000', // Red
+  0.9: '#ff0000', // Red
+  1.0: '#ff0000', // Red
 };
 
 interface WindData {
@@ -38,8 +44,6 @@ interface WindData {
 }
 export default class MapGLWindRenderer {
   private gl: WebGL2RenderingContext;
-  private width: number;
-  private height: number;
   public fadeOpacity: number;
   private speedFactor: number;
   private dropRate: number;
@@ -62,19 +66,19 @@ export default class MapGLWindRenderer {
   private windTexture?: WebGLTexture;
   private bbox?: number[];
   private matrix?: Float32Array;
-
+  private map: Map;
+  private opacity: number;
   constructor(
     gl: WebGL2RenderingContext,
-    width: number,
-    height: number,
+    map: Map,
     colors: RampColors = defaultRampColors,
+    opacity: number = 1.0,
   ) {
     this.gl = gl;
-    this.width = width;
-    this.height = height;
+    this.map = map;
 
     this.fadeOpacity = 0.996; // how fast the particle trails fade on each frame
-    this.speedFactor = 0.25; // how fast the particles move
+    this.speedFactor = 0.35; // how fast the particles move
     this.dropRate = 0.003; // how often the particles move to a random place
     this.dropRateBump = 0.01; // drop rate increase relative to individual particle speed
     this.numParticles = 65536;
@@ -97,7 +101,27 @@ export default class MapGLWindRenderer {
       16,
     );
 
+    this.opacity = opacity;
+
     this.setView([0, 0, 1, 1]);
+
+    this.map.on('moveend', () => {
+      const bounds = this.map.getBounds();
+      const nw = bounds!.getNorthWest();
+      const se = bounds!.getSouthEast();
+
+      const center = this.map.getCenter();
+
+      const minX = normalizeLongitude(nw.lng);
+      const minY = normalizeLatitude(nw.lat);
+      const maxX = normalizeLongitude(se.lng);
+      const maxY = normalizeLatitude(se.lat);
+
+      this.setView([minX, minY, maxX, maxY]);
+
+      this.resize();
+    });
+
     this.resize();
   }
 
@@ -106,26 +130,27 @@ export default class MapGLWindRenderer {
   }
 
   texWidth(): number {
-    return this.width || this.gl.canvas.width;
+    return this.gl.canvas.width;
   }
   texHeight(): number {
-    return this.width || this.gl.canvas.height;
+    return this.gl.canvas.height;
   }
 
   resize(): void {
     const gl = this.gl;
     const emptyPixels = new Uint8Array(this.texWidth() * this.texHeight() * 4);
+
     // screen textures to hold the drawn screen for the previous and the current frame
     this.backgroundTexture = utils.createTexture(
       gl,
-      gl.NEAREST,
+      gl.LINEAR,
       emptyPixels,
       this.texWidth(),
       this.texHeight(),
     );
     this.screenTexture = utils.createTexture(
       gl,
-      gl.NEAREST,
+      gl.LINEAR,
       emptyPixels,
       this.texWidth(),
       this.texHeight(),
@@ -183,10 +208,12 @@ export default class MapGLWindRenderer {
     if (matrix) {
       this.matrix = matrix;
     } else {
-      const minX = bbox[0];
-      const minY = mercY(bbox[3]);
-      const maxX = bbox[2];
-      const maxY = mercY(bbox[1]);
+      const [minX, maxY, maxX, minY] = [
+        bbox[0],
+        mercY(1 - bbox[1]),
+        bbox[2],
+        mercY(1 - bbox[3]),
+      ];
 
       const kx = 2 / (maxX - minX);
       const ky = 2 / (maxY - minY);
@@ -212,46 +239,6 @@ export default class MapGLWindRenderer {
     }
   }
 
-  draw(): void {
-    const gl = this.gl;
-    if (!this.windTexture || !this.particleStateTexture0) {
-      throw new Error('No wind texture or particle state texture');
-    }
-    gl.disable(gl.DEPTH_TEST);
-    gl.disable(gl.STENCIL_TEST);
-
-    utils.bindTexture(gl, this.windTexture, 0);
-    utils.bindTexture(gl, this.particleStateTexture0, 1);
-
-    this.drawScreen();
-    this.updateParticles();
-  }
-
-  drawScreen(): void {
-    const gl = this.gl;
-    if (!this.backgroundTexture || !this.screenTexture) {
-      throw new Error('No background texture or screen texture');
-    }
-    // draw the screen into a temporary framebuffer to retain it as the background on the next frame
-    utils.bindFramebuffer(gl, this.framebuffer, this.screenTexture);
-    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-
-    this.drawTexture(this.backgroundTexture, this.fadeOpacity);
-    this.drawParticles();
-
-    utils.bindFramebuffer(gl, null);
-    // enable blending to support drawing on top of an existing background (e.g. a map)
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    this.drawTexture(this.screenTexture, 1.0);
-    gl.disable(gl.BLEND);
-
-    // save the current screen as the background for the next frame
-    const temp = this.backgroundTexture;
-    this.backgroundTexture = this.screenTexture;
-    this.screenTexture = temp;
-  }
-
   drawTexture(
     texture: WebGLTexture,
     opacity: number,
@@ -272,8 +259,7 @@ export default class MapGLWindRenderer {
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
 
-  drawParticles(): void {
-    const gl = this.gl;
+  drawParticles(gl: WebGL2RenderingContext, matrix: Float32Array): void {
     if (
       !this.particleIndexBuffer ||
       !this.particleStateResolution ||
@@ -310,14 +296,18 @@ export default class MapGLWindRenderer {
     gl.uniform1f(program.u_particles_res, this.particleStateResolution);
     gl.uniform2f(program.u_wind_min, this.windData.uMin, this.windData.vMin);
     gl.uniform2f(program.u_wind_max, this.windData.uMax, this.windData.vMax);
-    gl.uniformMatrix4fv(program.u_matrix, false, this.matrix);
+    gl.uniformMatrix4fv(program.u_matrix, false, matrix);
     gl.uniform4fv(program.u_bbox, this.bbox);
 
     gl.drawArrays(gl.POINTS, 0, this._numParticles);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+    const borderProgram = utils.createProgram(gl, quadVert, drawFrag);
+    gl.useProgram(borderProgram.program);
   }
 
-  updateParticles(): void {
-    const gl = this.gl;
+  updateParticles(gl: WebGL2RenderingContext, matrix: number[]): void {
     if (
       !this.particleStateResolution ||
       !this.framebuffer ||
@@ -367,12 +357,18 @@ export default class MapGLWindRenderer {
     this.particleStateTexture1 = temp;
   }
 
-  public prerender() {
+  public prerender(
+    gl: WebGL2RenderingContext,
+    matrix: Array<number>,
+    projection?: ProjectionSpecification,
+    projectionToMercatorMatrix?: Array<number>,
+    projectionToMercatorTransition?: number,
+    centerInMercator?: Array<number>,
+    pixelsPerMeterRatio?: number,
+  ) {
     if (!this.windTexture || !this.particleStateTexture0) {
       throw new Error('No wind texture or particle state texture');
     }
-
-    const gl = this.gl;
 
     gl.disable(gl.BLEND);
 
@@ -384,7 +380,7 @@ export default class MapGLWindRenderer {
     utils.bindTexture(gl, this.windTexture, 0);
     utils.bindTexture(gl, this.particleStateTexture0, 1);
 
-    this.updateParticles();
+    this.updateParticles(gl, matrix);
 
     gl.disable(gl.BLEND);
 
@@ -402,32 +398,77 @@ export default class MapGLWindRenderer {
     }
 
     this.drawTexture(this.backgroundTexture, this.fadeOpacity);
-    this.drawParticles();
+    this.drawParticles(gl, this.matrix!);
   }
 
-  public render() {
+  private getQuadFromViewport(): Float32Array {
+    const bounds = this.map.getBounds();
+
+    const nw = mapboxgl.MercatorCoordinate.fromLngLat(bounds!.getNorthWest());
+    const ne = mapboxgl.MercatorCoordinate.fromLngLat(bounds!.getNorthEast());
+    const sw = mapboxgl.MercatorCoordinate.fromLngLat(bounds!.getSouthWest());
+    const se = mapboxgl.MercatorCoordinate.fromLngLat(bounds!.getSouthEast());
+
+    return new Float32Array([
+      nw.x,
+      nw.y,
+      ne.x,
+      ne.y,
+      sw.x,
+      sw.y,
+      sw.x,
+      sw.y,
+      se.x,
+      se.y,
+      ne.x,
+      ne.y,
+    ]);
+  }
+
+  public render(
+    gl: WebGL2RenderingContext,
+    matrix: Array<number>,
+    projection?: ProjectionSpecification,
+    projectionToMercatorMatrix?: Array<number>,
+    projectionToMercatorTransition?: number,
+    centerInMercator?: Array<number>,
+    pixelsPerMeterRatio?: number,
+  ) {
     if (!this.screenTexture) {
       throw new Error('No screen texture');
     }
 
-    const gl = this.gl;
-
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.STENCIL_TEST);
 
+    const centerLngLat = this.map.getCenter();
+
+    const quadBuffer = utils.createBuffer(gl, this.getQuadFromViewport());
+
     // Wind drawScreen:
     utils.bindFramebuffer(gl, null);
-    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-    gl.clearColor(0, 0, 0, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT);
+
     // enable blending to support drawing on top of an existing background (e.g. a map)
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    this.drawTexture(this.screenTexture, 1.0);
+    const program = utils.createProgram(gl, mercatorVert, mercatorFrag);
+    gl.useProgram(program.program);
+
+    utils.bindAttribute(gl, quadBuffer, program.a_pos as number, 2);
+
+    utils.bindTexture(gl, this.screenTexture, 2);
+    gl.uniform1i(program.u_screen as number, 2);
+    gl.uniform1f(program.u_opacity, this.opacity);
+    gl.uniformMatrix4fv(program.u_matrix, false, matrix);
+    gl.uniform4fv(program.u_bbox, this.bbox!);
+    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
     gl.disable(gl.BLEND);
   }
 
   public renderToTile(gl: WebGLRenderingContext, tileId: utils.TileID) {
+    console.log(this.bbox);
     const offsetScale = utils.getOffsetAndScaleForTileMapping(
       { x: 0, y: 0, z: 0 },
       tileId,
@@ -475,7 +516,31 @@ function getColorRamp(colors: RampColors): Uint8Array {
   return new Uint8Array(ctx.getImageData(0, 0, 512, 1).data);
 }
 
-function mercY(y: number): number {
+const normalizeLongitude = (lng: number): number => {
+  return (lng + 180) / 360;
+};
+
+const normalizeLatitude = (lat: number): number => {
+  return 1.0 - (lat + 90) / 180;
+};
+
+const denormalizeLongitude = (normalizedLng: number): number => {
+  return normalizedLng * 360 - 180;
+};
+
+const denormalizeLatitude = (normalizedLat: number): number => {
+  return (1.0 - normalizedLat) * 180 - 90;
+};
+
+function mercatorProjection(y: number): number {
+  const radians = (y * 180 - 90) * (Math.PI / 180);
+  const s = Math.sin(radians);
+  const projectedY = (Math.log((1 + s) / (1 - s)) / (2 * Math.PI) + 1) / 2;
+
+  return projectedY;
+}
+
+function mercY(y: number) {
   const s = Math.sin(Math.PI * (y - 0.5));
   const y2 =
     1.0 - (Math.log((1.0 + s) / (1.0 - s)) / (2 * Math.PI) + 1.0) / 2.0;
