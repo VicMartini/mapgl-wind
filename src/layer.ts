@@ -19,14 +19,16 @@ interface WindLayerParams {
   id?: string;
   windDataURL: string;
   windMetadata: WindData;
-  numParticles?: number;
-  fadeOpacity?: number;
   maxzoom?: number;
   minzoom?: number;
   opacity?: number;
   globeModeResolution?: number;
   globeModeNumberOfParticles?: number;
   mercatorModeNumberOfParticles?: number;
+  globeModeFadeOpacity?: number;
+  mercatorModeFadeOpacity?: number;
+  globeModeSpeedFactor?: number;
+  mercatorModeSpeedFactor?: number;
   transformRequest?: (url: string) => {
     url: string;
     headers?: Record<string, string>;
@@ -45,13 +47,16 @@ export class WindLayer implements mapboxgl.CustomLayerInterface {
   private mercatorRenderer?: MercatorWindRenderer;
   private globeRenderer?: GlobeWindRenderer;
   private windDataURL: string;
-  private fadeOpacity: number;
   private colors?: RampColors;
   private opacity: number;
   private globeModeResolution: number;
   private globeModeNumberOfParticles: number;
   private mercatorModeNumberOfParticles: number;
   private windData: WindData;
+  private globeModeFadeOpacity: number;
+  private mercatorModeFadeOpacity: number;
+  private globeModeSpeedFactor: number;
+  private mercatorModeSpeedFactor: number;
   private transformRequest?: (url: string) => {
     url: string;
     headers?: Record<string, string>;
@@ -64,9 +69,12 @@ export class WindLayer implements mapboxgl.CustomLayerInterface {
     globeModeResolution = 10240,
     globeModeNumberOfParticles = 65536,
     mercatorModeNumberOfParticles = 6553,
+    globeModeFadeOpacity = 0.996,
+    mercatorModeFadeOpacity = 0.996,
+    globeModeSpeedFactor = 0.25,
+    mercatorModeSpeedFactor = 0.25,
     maxzoom = 20,
     minzoom = 0,
-    fadeOpacity = 0.996,
     opacity = 1.0,
     colors,
     transformRequest,
@@ -81,10 +89,13 @@ export class WindLayer implements mapboxgl.CustomLayerInterface {
     this.mercatorModeNumberOfParticles = mercatorModeNumberOfParticles;
     this.maxzoom = maxzoom;
     this.minzoom = minzoom;
-    this.fadeOpacity = fadeOpacity;
-    this.opacity = opacity;
     this.colors = colors;
     this.transformRequest = transformRequest;
+    this.globeModeFadeOpacity = globeModeFadeOpacity;
+    this.mercatorModeFadeOpacity = mercatorModeFadeOpacity;
+    this.globeModeSpeedFactor = globeModeSpeedFactor;
+    this.mercatorModeSpeedFactor = mercatorModeSpeedFactor;
+    this.opacity = opacity;
   }
 
   public onAdd(map: mapboxgl.Map, gl: WebGL2RenderingContext) {
@@ -95,6 +106,8 @@ export class WindLayer implements mapboxgl.CustomLayerInterface {
       map,
       this.colors,
       this.opacity,
+      this.mercatorModeFadeOpacity,
+      this.mercatorModeSpeedFactor,
     );
 
     this.globeRenderer = new GlobeWindRenderer(
@@ -104,13 +117,14 @@ export class WindLayer implements mapboxgl.CustomLayerInterface {
       this.globeModeResolution,
       this.colors,
       this.opacity,
+      this.globeModeFadeOpacity,
+      this.globeModeSpeedFactor,
     );
 
     this.map.setLayerZoomRange(this.id, this.minzoom ?? 0, this.maxzoom ?? 20);
 
     this.mercatorRenderer.numParticles = this.mercatorModeNumberOfParticles;
     this.globeRenderer.numParticles = this.globeModeNumberOfParticles;
-    this.mercatorRenderer.fadeOpacity = this.fadeOpacity;
 
     this.setWindTextureURL(this.windDataURL);
   }

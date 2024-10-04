@@ -47,7 +47,6 @@ void main() {
 
     // Guarantee opacity fade out
     gl_FragColor = vec4(floor(255.0 * color.rgb) / 255.0, color.a);
-    //gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
 }
 
 

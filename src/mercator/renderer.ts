@@ -20,20 +20,6 @@ export interface RampColors {
   [key: number]: string;
 }
 
-const defaultRampColors: RampColors = {
-  0.0: '#ff0000', // Red
-  0.1: '#ff0000', // Red
-  0.2: '#ff0000', // Red
-  0.3: '#ff0000', // Red
-  0.4: '#ff0000', // Red
-  0.5: '#ff0000', // Red
-  0.6: '#ff0000', // Red
-  0.7: '#ff0000', // Red
-  0.8: '#ff0000', // Red
-  0.9: '#ff0000', // Red
-  1.0: '#ff0000', // Red
-};
-
 interface WindData {
   width: number;
   height: number;
@@ -42,6 +28,21 @@ interface WindData {
   vMin: number;
   vMax: number;
 }
+
+const defaultRampColors: RampColors = {
+  0.0: '#e6f3ff', // Light sky blue
+  0.1: '#d1e8ff', // Pale blue
+  0.2: '#b8e2ff', // Light azure
+  0.3: '#a0dcff', // Light cyan
+  0.4: '#8ad6ff', // Light turquoise
+  0.5: '#75d0ff', // Light cerulean
+  0.6: '#61caff', // Light sky
+  0.7: '#4dc4ff', // Light cornflower
+  0.8: '#38beff', // Light steel blue
+  0.9: '#24b8ff', // Light dodger blue
+  1.0: '#10b2ff', // Light deep sky blue
+};
+
 export default class MapGLWindRenderer {
   private gl: WebGL2RenderingContext;
   public fadeOpacity: number;
@@ -73,14 +74,20 @@ export default class MapGLWindRenderer {
     map: Map,
     colors: RampColors = defaultRampColors,
     opacity: number = 1.0,
+    fadeOpacity: number = 0.996,
+    speedFactor: number = 0.35,
+    dropRate: number = 0.003,
+    dropRateBump: number = 0.01,
   ) {
     this.gl = gl;
     this.map = map;
-
-    this.fadeOpacity = 0.996; // how fast the particle trails fade on each frame
-    this.speedFactor = 0.35; // how fast the particles move
-    this.dropRate = 0.003; // how often the particles move to a random place
-    this.dropRateBump = 0.01; // drop rate increase relative to individual particle speed
+    console.log(fadeOpacity);
+    console.log(opacity);
+    console.log(colors);
+    this.fadeOpacity = fadeOpacity; // how fast the particle trails fade on each frame
+    this.speedFactor = speedFactor; // how fast the particles move
+    this.dropRate = dropRate; // how often the particles move to a random place
+    this.dropRateBump = dropRateBump; // drop rate increase relative to individual particle speed
     this.numParticles = 65536;
 
     this.drawProgram = utils.createProgram(gl, drawVert, drawFrag);
@@ -101,7 +108,7 @@ export default class MapGLWindRenderer {
       16,
     );
 
-    this.opacity = opacity;
+    this.opacity = 1.0;
 
     this.setView([0, 0, 1, 1]);
 
@@ -342,7 +349,7 @@ export default class MapGLWindRenderer {
     gl.uniform2f(program.u_wind_res, this.windData.width, this.windData.height);
     gl.uniform2f(program.u_wind_min, this.windData.uMin, this.windData.vMin);
     gl.uniform2f(program.u_wind_max, this.windData.uMax, this.windData.vMax);
-    gl.uniform1f(program.u_speed_factor, this.speedFactor);
+    gl.uniform1f(program.u_speed_factor, 0.5);
     gl.uniform1f(program.u_drop_rate, this.dropRate);
     gl.uniform1f(program.u_drop_rate_bump, this.dropRateBump);
     gl.uniform4fv(program.u_bbox, this.bbox);
@@ -353,50 +360,6 @@ export default class MapGLWindRenderer {
     const temp = this.particleStateTexture0;
     this.particleStateTexture0 = this.particleStateTexture1;
     this.particleStateTexture1 = temp;
-  }
-
-  public prerender(
-    gl: WebGL2RenderingContext,
-    matrix: Array<number>,
-    _projection?: ProjectionSpecification,
-    _projectionToMercatorMatrix?: Array<number>,
-    _projectionToMercatorTransition?: number,
-    _centerInMercator?: Array<number>,
-    _pixelsPerMeterRatio?: number,
-  ) {
-    if (!this.windTexture || !this.particleStateTexture0) {
-      throw new Error('No wind texture or particle state texture');
-    }
-
-    gl.disable(gl.BLEND);
-
-    // save the current screen as the background for the next frame
-    const temp = this.backgroundTexture;
-    this.backgroundTexture = this.screenTexture;
-    this.screenTexture = temp;
-
-    utils.bindTexture(gl, this.windTexture, 0);
-    utils.bindTexture(gl, this.particleStateTexture0, 1);
-
-    this.updateParticles(gl, matrix);
-
-    gl.disable(gl.BLEND);
-
-    utils.bindTexture(gl, this.windTexture, 0);
-    utils.bindTexture(gl, this.particleStateTexture0, 1);
-
-    gl.disable(gl.DEPTH_TEST);
-    gl.disable(gl.STENCIL_TEST);
-
-    // draw the screen into a temporary framebuffer to retain it as the background on the next frame
-    utils.bindFramebuffer(gl, this.framebuffer, this.screenTexture);
-    gl.viewport(0, 0, this.texWidth(), this.texHeight());
-    if (!this.backgroundTexture) {
-      throw new Error('No background texture');
-    }
-
-    this.drawTexture(this.backgroundTexture, this.fadeOpacity);
-    this.drawParticles(gl, this.matrix!);
   }
 
   private getQuadFromViewport(): Float32Array {
@@ -421,6 +384,50 @@ export default class MapGLWindRenderer {
       ne.x,
       ne.y,
     ]);
+  }
+
+  public prerender(
+    gl: WebGL2RenderingContext,
+    matrix: Array<number>,
+    _projection?: ProjectionSpecification,
+    _projectionToMercatorMatrix?: Array<number>,
+    _projectionToMercatorTransition?: number,
+    _centerInMercator?: Array<number>,
+    _pixelsPerMeterRatio?: number,
+  ) {
+    if (!this.windTexture || !this.particleStateTexture0) {
+      throw new Error('No wind texture or particle state texture');
+    }
+
+    gl.disable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+    // save the current screen as the background for the next frame
+    const temp = this.backgroundTexture;
+    this.backgroundTexture = this.screenTexture;
+    this.screenTexture = temp;
+
+    utils.bindTexture(gl, this.windTexture, 0);
+    utils.bindTexture(gl, this.particleStateTexture0, 1);
+
+    this.updateParticles(gl, matrix);
+
+    utils.bindTexture(gl, this.windTexture, 0);
+    utils.bindTexture(gl, this.particleStateTexture0, 1);
+
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.STENCIL_TEST);
+
+    // draw the screen into a temporary framebuffer to retain it as the background on the next frame
+    utils.bindFramebuffer(gl, this.framebuffer, this.screenTexture);
+    gl.viewport(0, 0, this.texWidth(), this.texHeight());
+    if (!this.backgroundTexture) {
+      throw new Error('No background texture');
+    }
+
+    this.drawTexture(this.backgroundTexture, this.fadeOpacity);
+    this.drawParticles(gl, this.matrix!);
+    gl.disable(gl.BLEND);
   }
 
   public render(
@@ -464,12 +471,9 @@ export default class MapGLWindRenderer {
   }
 
   public renderToTile(gl: WebGLRenderingContext, tileId: utils.TileID) {
-    console.log(this.bbox);
-    const offsetScale = utils.getOffsetAndScaleForTileMapping(
-      { x: 0, y: 0, z: 0 },
-      tileId,
+    throw new Error(
+      'Not implemented, this renderer is meant to be used only for the mercator mode',
     );
-    this.drawTexture(this.screenTexture as WebGLTexture, 0.6, offsetScale);
   }
 
   public destroy() {
