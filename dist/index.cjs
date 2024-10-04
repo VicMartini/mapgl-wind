@@ -223,17 +223,15 @@ var GlobeWindRenderer = class {
   matrix;
   map;
   opacity;
-  constructor(gl, map, width, height, colors = defaultRampColors, opacity = 1) {
+  constructor(gl, map, width, height, colors = defaultRampColors, opacity = 1, fadeOpacity = 0.96, speedFactor = 0.25, dropRate = 3e-3, dropRateBump = 0.01) {
     this.gl = gl;
     this.map = map;
     this.width = width;
     this.height = height;
-    console.log("width", this.width);
-    console.log("height", this.height);
-    this.fadeOpacity = 0.996;
-    this.speedFactor = 0.25;
-    this.dropRate = 3e-3;
-    this.dropRateBump = 0.01;
+    this.fadeOpacity = fadeOpacity;
+    this.speedFactor = speedFactor;
+    this.dropRate = dropRate;
+    this.dropRateBump = dropRateBump;
     this.drawProgram = createProgram(gl, draw_vert_default, draw_frag_default);
     this.screenProgram = createProgram(gl, quad_vert_default, screen_frag_default);
     this.tileProgram = createProgram(gl, tile_quad_vert_default, screen_frag_default);
@@ -452,22 +450,21 @@ var GlobeWindRenderer = class {
     this.particleStateTexture0 = this.particleStateTexture1;
     this.particleStateTexture1 = temp;
   }
-  prerender(gl, matrix, projection, projectionToMercatorMatrix, projectionToMercatorTransition, centerInMercator, pixelsPerMeterRatio) {
+  prerender(gl, _matrix, _projection, _projectionToMercatorMatrix, _projectionToMercatorTransition, _centerInMercator, _pixelsPerMeterRatio) {
     if (!this.windTexture || !this.particleStateTexture0) {
       throw new Error("No wind texture or particle state texture");
     }
     gl.disable(gl.BLEND);
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.STENCIL_TEST);
     const temp = this.backgroundTexture;
     this.backgroundTexture = this.screenTexture;
     this.screenTexture = temp;
     bindTexture(gl, this.windTexture, 0);
     bindTexture(gl, this.particleStateTexture0, 1);
     this.updateParticles();
-    gl.disable(gl.BLEND);
     bindTexture(gl, this.windTexture, 0);
     bindTexture(gl, this.particleStateTexture0, 1);
-    gl.disable(gl.DEPTH_TEST);
-    gl.disable(gl.STENCIL_TEST);
     bindFramebuffer(gl, this.framebuffer, this.screenTexture);
     gl.viewport(0, 0, this.texWidth(), this.texHeight());
     if (!this.backgroundTexture) {
@@ -477,18 +474,10 @@ var GlobeWindRenderer = class {
     this.drawParticles();
     gl.disable(gl.BLEND);
   }
-  get_bbox() {
-    const bounds = this.map.getBounds();
-    const northWest = bounds.getNorthWest();
-    const southEast = bounds.getSouthEast();
-    return new Float32Array([
-      northWest.lng,
-      northWest.lat,
-      southEast.lng,
-      southEast.lat
-    ]);
-  }
-  render(gl, matrix) {
+  render(_gl, _matrix) {
+    throw new Error(
+      "Not implemented, this renderer is meant to be used only for the globe mode"
+    );
   }
   renderToTile(gl, tileId) {
     const offsetScale = getOffsetAndScaleForTileMapping(
@@ -541,7 +530,7 @@ function mercY(y) {
 }
 
 // src/mercator/shaders/draw.vert.glsl
-var draw_vert_default2 = "precision mediump float;attribute float a_index;uniform sampler2D u_particles;uniform float u_particles_res;uniform mat4 u_matrix;uniform vec4 u_bbox;varying vec2 v_particle_pos;void main(){vec4 color=texture2D(u_particles,vec2(fract(a_index/u_particles_res),floor(a_index/u_particles_res)/u_particles_res));vec2 pos=vec2(color.r/255.0+color.b,color.g/255.0+color.a);v_particle_pos=u_bbox.xy+pos*(u_bbox.zw-u_bbox.xy);float s=sin(radians(v_particle_pos.y*180.0-90.0));float y=(degrees(log((1.0+s)/(1.0-s)))/360.0+1.0)/2.0;gl_PointSize=6.0;gl_Position=u_matrix*vec4(v_particle_pos.x,y,0,1);}";
+var draw_vert_default2 = "precision mediump float;attribute float a_index;uniform sampler2D u_particles;uniform float u_particles_res;uniform mat4 u_matrix;uniform vec4 u_bbox;varying vec2 v_particle_pos;void main(){vec4 color=texture2D(u_particles,vec2(fract(a_index/u_particles_res),floor(a_index/u_particles_res)/u_particles_res));vec2 pos=vec2(color.r/255.0+color.b,color.g/255.0+color.a);v_particle_pos=u_bbox.xy+pos*(u_bbox.zw-u_bbox.xy);float s=sin(radians(v_particle_pos.y*180.0-90.0));float y=(degrees(log((1.0+s)/(1.0-s)))/360.0+1.0)/2.0;gl_PointSize=9.0;gl_Position=u_matrix*vec4(v_particle_pos.x,y,0,1);}";
 
 // src/mercator/shaders/draw.frag.glsl
 var draw_frag_default2 = "precision mediump float;uniform sampler2D u_wind;uniform vec2 u_wind_min;uniform vec2 u_wind_max;uniform sampler2D u_color_ramp;varying vec2 v_particle_pos;void main(){vec2 velocity=mix(u_wind_min,u_wind_max,texture2D(u_wind,v_particle_pos).rg);float speed_t=length(velocity)/length(u_wind_max);vec2 center=gl_PointCoord-0.5;float dist=length(center*2.0);if(dist>1.0){discard;}vec2 ramp_pos=vec2(fract(16.0*speed_t),floor(16.0*speed_t)/16.0);gl_FragColor=texture2D(u_color_ramp,ramp_pos);}";
@@ -567,28 +556,28 @@ var mercator_frag_default = "precision mediump float;uniform sampler2D u_screen;
 // src/mercator/renderer.ts
 var import_mapbox_gl = __toESM(require("mapbox-gl"), 1);
 var defaultRampColors2 = {
-  0: "#ff0000",
-  // Red
-  0.1: "#ff0000",
-  // Red
-  0.2: "#ff0000",
-  // Red
-  0.3: "#ff0000",
-  // Red
-  0.4: "#ff0000",
-  // Red
-  0.5: "#ff0000",
-  // Red
-  0.6: "#ff0000",
-  // Red
-  0.7: "#ff0000",
-  // Red
-  0.8: "#ff0000",
-  // Red
-  0.9: "#ff0000",
-  // Red
-  1: "#ff0000"
-  // Red
+  0: "#e6f3ff",
+  // Light sky blue
+  0.1: "#d1e8ff",
+  // Pale blue
+  0.2: "#b8e2ff",
+  // Light azure
+  0.3: "#a0dcff",
+  // Light cyan
+  0.4: "#8ad6ff",
+  // Light turquoise
+  0.5: "#75d0ff",
+  // Light cerulean
+  0.6: "#61caff",
+  // Light sky
+  0.7: "#4dc4ff",
+  // Light cornflower
+  0.8: "#38beff",
+  // Light steel blue
+  0.9: "#24b8ff",
+  // Light dodger blue
+  1: "#10b2ff"
+  // Light deep sky blue
 };
 var MapGLWindRenderer = class {
   gl;
@@ -616,14 +605,15 @@ var MapGLWindRenderer = class {
   matrix;
   map;
   opacity;
-  constructor(gl, map, colors = defaultRampColors2, opacity = 1) {
+  constructor(gl, map, colors = defaultRampColors2, opacity = 1, fadeOpacity = 0.996, speedFactor = 0.55, dropRate = 3e-3, dropRateBump = 0.01) {
     this.gl = gl;
     this.map = map;
-    this.fadeOpacity = 0.996;
-    this.speedFactor = 0.35;
-    this.dropRate = 3e-3;
-    this.dropRateBump = 0.01;
+    this.fadeOpacity = fadeOpacity;
+    this.speedFactor = speedFactor;
+    this.dropRate = dropRate;
+    this.dropRateBump = dropRateBump;
     this.numParticles = 65536;
+    this.opacity = opacity;
     this.drawProgram = createProgram(gl, draw_vert_default2, draw_frag_default2);
     this.screenProgram = createProgram(gl, quad_vert_default2, screen_frag_default2);
     this.tileProgram = createProgram(gl, tile_quad_vert_default2, screen_frag_default2);
@@ -640,13 +630,11 @@ var MapGLWindRenderer = class {
       16,
       16
     );
-    this.opacity = opacity;
     this.setView([0, 0, 1, 1]);
     this.map.on("moveend", () => {
       const bounds = this.map.getBounds();
       const nw = bounds.getNorthWest();
       const se = bounds.getSouthEast();
-      const center = this.map.getCenter();
       const minX = normalizeLongitude(nw.lng);
       const minY = normalizeLatitude(nw.lat);
       const maxX = normalizeLongitude(se.lng);
@@ -797,7 +785,7 @@ var MapGLWindRenderer = class {
     const borderProgram = createProgram(gl, quad_vert_default2, draw_frag_default2);
     gl.useProgram(borderProgram.program);
   }
-  updateParticles(gl, matrix) {
+  updateParticles(gl, _matrix) {
     if (!this.particleStateResolution || !this.framebuffer || !this.particleStateTexture1 || !this.windData || !this.bbox) {
       throw new Error(
         "Missing required particle state data: " + (!this.particleStateResolution ? "particle state resolution, " : "") + (!this.framebuffer ? "framebuffer, " : "") + (!this.particleStateTexture1 ? "particle state texture 1" : "") + (!this.windData ? "wind data, " : "") + (!this.bbox ? "bounding box" : "")
@@ -828,30 +816,6 @@ var MapGLWindRenderer = class {
     this.particleStateTexture0 = this.particleStateTexture1;
     this.particleStateTexture1 = temp;
   }
-  prerender(gl, matrix, projection, projectionToMercatorMatrix, projectionToMercatorTransition, centerInMercator, pixelsPerMeterRatio) {
-    if (!this.windTexture || !this.particleStateTexture0) {
-      throw new Error("No wind texture or particle state texture");
-    }
-    gl.disable(gl.BLEND);
-    const temp = this.backgroundTexture;
-    this.backgroundTexture = this.screenTexture;
-    this.screenTexture = temp;
-    bindTexture(gl, this.windTexture, 0);
-    bindTexture(gl, this.particleStateTexture0, 1);
-    this.updateParticles(gl, matrix);
-    gl.disable(gl.BLEND);
-    bindTexture(gl, this.windTexture, 0);
-    bindTexture(gl, this.particleStateTexture0, 1);
-    gl.disable(gl.DEPTH_TEST);
-    gl.disable(gl.STENCIL_TEST);
-    bindFramebuffer(gl, this.framebuffer, this.screenTexture);
-    gl.viewport(0, 0, this.texWidth(), this.texHeight());
-    if (!this.backgroundTexture) {
-      throw new Error("No background texture");
-    }
-    this.drawTexture(this.backgroundTexture, this.fadeOpacity);
-    this.drawParticles(gl, this.matrix);
-  }
   getQuadFromViewport() {
     const bounds = this.map.getBounds();
     const nw = import_mapbox_gl.default.MercatorCoordinate.fromLngLat(bounds.getNorthWest());
@@ -873,13 +837,37 @@ var MapGLWindRenderer = class {
       ne.y
     ]);
   }
-  render(gl, matrix, projection, projectionToMercatorMatrix, projectionToMercatorTransition, centerInMercator, pixelsPerMeterRatio) {
+  prerender(gl, matrix, _projection, _projectionToMercatorMatrix, _projectionToMercatorTransition, _centerInMercator, _pixelsPerMeterRatio) {
+    if (!this.windTexture || !this.particleStateTexture0) {
+      throw new Error("No wind texture or particle state texture");
+    }
+    gl.disable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    const temp = this.backgroundTexture;
+    this.backgroundTexture = this.screenTexture;
+    this.screenTexture = temp;
+    bindTexture(gl, this.windTexture, 0);
+    bindTexture(gl, this.particleStateTexture0, 1);
+    this.updateParticles(gl, matrix);
+    bindTexture(gl, this.windTexture, 0);
+    bindTexture(gl, this.particleStateTexture0, 1);
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.STENCIL_TEST);
+    bindFramebuffer(gl, this.framebuffer, this.screenTexture);
+    gl.viewport(0, 0, this.texWidth(), this.texHeight());
+    if (!this.backgroundTexture) {
+      throw new Error("No background texture");
+    }
+    this.drawTexture(this.backgroundTexture, this.fadeOpacity);
+    this.drawParticles(gl, this.matrix);
+    gl.disable(gl.BLEND);
+  }
+  render(gl, matrix, _projection, _projectionToMercatorMatrix, _projectionToMercatorTransition, _centerInMercator, _pixelsPerMeterRatio) {
     if (!this.screenTexture) {
       throw new Error("No screen texture");
     }
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.STENCIL_TEST);
-    const centerLngLat = this.map.getCenter();
     const quadBuffer = createBuffer(gl, this.getQuadFromViewport());
     bindFramebuffer(gl, null);
     gl.enable(gl.BLEND);
@@ -896,13 +884,10 @@ var MapGLWindRenderer = class {
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     gl.disable(gl.BLEND);
   }
-  renderToTile(gl, tileId) {
-    console.log(this.bbox);
-    const offsetScale = getOffsetAndScaleForTileMapping(
-      { x: 0, y: 0, z: 0 },
-      tileId
+  renderToTile(_gl, _tileId) {
+    throw new Error(
+      "Not implemented, this renderer is meant to be used only for the mercator mode"
     );
-    this.drawTexture(this.screenTexture, 0.6, offsetScale);
   }
   destroy() {
     if (this.windTexture) {
@@ -960,13 +945,16 @@ var WindLayer = class {
   mercatorRenderer;
   globeRenderer;
   windDataURL;
-  fadeOpacity;
   colors;
   opacity;
   globeModeResolution;
   globeModeNumberOfParticles;
   mercatorModeNumberOfParticles;
   windData;
+  globeModeFadeOpacity;
+  mercatorModeFadeOpacity;
+  globeModeSpeedFactor;
+  mercatorModeSpeedFactor;
   transformRequest;
   constructor({
     id = "wind-layer",
@@ -975,9 +963,12 @@ var WindLayer = class {
     globeModeResolution = 10240,
     globeModeNumberOfParticles = 65536,
     mercatorModeNumberOfParticles = 6553,
+    globeModeFadeOpacity = 0.996,
+    mercatorModeFadeOpacity = 0.996,
+    globeModeSpeedFactor = 0.25,
+    mercatorModeSpeedFactor = 0.25,
     maxzoom = 20,
     minzoom = 0,
-    fadeOpacity = 0.996,
     opacity = 1,
     colors,
     transformRequest
@@ -992,10 +983,13 @@ var WindLayer = class {
     this.mercatorModeNumberOfParticles = mercatorModeNumberOfParticles;
     this.maxzoom = maxzoom;
     this.minzoom = minzoom;
-    this.fadeOpacity = fadeOpacity;
-    this.opacity = opacity;
     this.colors = colors;
     this.transformRequest = transformRequest;
+    this.globeModeFadeOpacity = globeModeFadeOpacity;
+    this.mercatorModeFadeOpacity = mercatorModeFadeOpacity;
+    this.globeModeSpeedFactor = globeModeSpeedFactor;
+    this.mercatorModeSpeedFactor = mercatorModeSpeedFactor;
+    this.opacity = opacity;
   }
   onAdd(map, gl) {
     this.map = map;
@@ -1003,7 +997,9 @@ var WindLayer = class {
       gl,
       map,
       this.colors,
-      this.opacity
+      this.opacity,
+      this.mercatorModeFadeOpacity,
+      this.mercatorModeSpeedFactor
     );
     this.globeRenderer = new GlobeWindRenderer(
       gl,
@@ -1011,12 +1007,13 @@ var WindLayer = class {
       this.globeModeResolution,
       this.globeModeResolution,
       this.colors,
-      this.opacity
+      this.opacity,
+      this.globeModeFadeOpacity,
+      this.globeModeSpeedFactor
     );
     this.map.setLayerZoomRange(this.id, this.minzoom ?? 0, this.maxzoom ?? 20);
     this.mercatorRenderer.numParticles = this.mercatorModeNumberOfParticles;
     this.globeRenderer.numParticles = this.globeModeNumberOfParticles;
-    this.mercatorRenderer.fadeOpacity = this.fadeOpacity;
     this.setWindTextureURL(this.windDataURL);
   }
   async setWindTextureURL(url) {

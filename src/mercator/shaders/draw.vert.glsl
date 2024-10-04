@@ -27,6 +27,6 @@ void main() {
     float s = sin(radians(v_particle_pos.y * 180.0 - 90.0));
     float y = (degrees(log((1.0 + s) / (1.0 - s))) / 360.0 + 1.0) / 2.0;
 
-    gl_PointSize = 6.0;
-    gl_Position = u_matrix * vec4( v_particle_pos.x,y, 0, 1);
+    gl_PointSize = 9.0;
+    gl_Position = u_matrix * vec4(v_particle_pos.x,y, 0, 1);
 }

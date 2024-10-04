@@ -9,7 +9,6 @@ import tileQuadVert from './shaders/tile_quad.vert.glsl';
 import screenFrag from './shaders/screen.frag.glsl';
 import updateFrag from './shaders/update.frag.glsl';
 
-import { LngLatBounds } from 'mapbox-gl';
 import { Map, ProjectionSpecification } from 'mapbox-gl';
 
 export interface RampColors {
@@ -73,6 +72,10 @@ export default class GlobeWindRenderer {
     height: number,
     colors: RampColors = defaultRampColors,
     opacity: number = 1.0,
+    fadeOpacity: number = 0.96,
+    speedFactor: number = 0.25,
+    dropRate: number = 0.003,
+    dropRateBump: number = 0.01,
   ) {
     this.gl = gl;
     this.map = map;
@@ -80,13 +83,10 @@ export default class GlobeWindRenderer {
     this.width = width;
     this.height = height;
 
-    console.log('width', this.width);
-    console.log('height', this.height);
-
-    this.fadeOpacity = 0.996; // how fast the particle trails fade on each frame
-    this.speedFactor = 0.25; // how fast the particles move
-    this.dropRate = 0.003; // how often the particles move to a random place
-    this.dropRateBump = 0.01; // drop rate increase relative to individual particle speed
+    this.fadeOpacity = fadeOpacity; // how fast the particle trails fade on each frame
+    this.speedFactor = speedFactor; // how fast the particles move
+    this.dropRate = dropRate; // how often the particles move to a random place
+    this.dropRateBump = dropRateBump; // drop rate increase relative to individual particle speed
 
     this.drawProgram = utils.createProgram(gl, drawVert, drawFrag);
     this.screenProgram = utils.createProgram(gl, quadVert, screenFrag);
@@ -392,6 +392,8 @@ export default class GlobeWindRenderer {
     }
 
     gl.disable(gl.BLEND);
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.STENCIL_TEST);
 
     // save the current screen as the background for the next frame
     const temp = this.backgroundTexture;
@@ -403,13 +405,8 @@ export default class GlobeWindRenderer {
 
     this.updateParticles();
 
-    gl.disable(gl.BLEND);
-
     utils.bindTexture(gl, this.windTexture, 0);
     utils.bindTexture(gl, this.particleStateTexture0, 1);
-
-    gl.disable(gl.DEPTH_TEST);
-    gl.disable(gl.STENCIL_TEST);
 
     // draw the screen into a temporary framebuffer to retain it as the background on the next frame
     utils.bindFramebuffer(gl, this.framebuffer, this.screenTexture);
@@ -424,19 +421,6 @@ export default class GlobeWindRenderer {
     gl.disable(gl.BLEND);
   }
 
-  private get_bbox(): Float32Array {
-    const bounds = this.map.getBounds() as LngLatBounds;
-
-    const northWest = bounds.getNorthWest();
-    const southEast = bounds.getSouthEast();
-
-    return new Float32Array([
-      northWest.lng,
-      northWest.lat,
-      southEast.lng,
-      southEast.lat,
-    ]);
-  }
   public render(_gl: WebGL2RenderingContext, _matrix: number[]) {
     throw new Error(
       'Not implemented, this renderer is meant to be used only for the globe mode',
