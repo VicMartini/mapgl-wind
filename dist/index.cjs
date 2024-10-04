@@ -228,8 +228,6 @@ var GlobeWindRenderer = class {
     this.map = map;
     this.width = width;
     this.height = height;
-    console.log("width", this.width);
-    console.log("height", this.height);
     this.fadeOpacity = fadeOpacity;
     this.speedFactor = speedFactor;
     this.dropRate = dropRate;
@@ -607,17 +605,15 @@ var MapGLWindRenderer = class {
   matrix;
   map;
   opacity;
-  constructor(gl, map, colors = defaultRampColors2, opacity = 1, fadeOpacity = 0.996, speedFactor = 0.35, dropRate = 3e-3, dropRateBump = 0.01) {
+  constructor(gl, map, colors = defaultRampColors2, opacity = 1, fadeOpacity = 0.996, speedFactor = 0.55, dropRate = 3e-3, dropRateBump = 0.01) {
     this.gl = gl;
     this.map = map;
-    console.log(fadeOpacity);
-    console.log(opacity);
-    console.log(colors);
     this.fadeOpacity = fadeOpacity;
     this.speedFactor = speedFactor;
     this.dropRate = dropRate;
     this.dropRateBump = dropRateBump;
     this.numParticles = 65536;
+    this.opacity = opacity;
     this.drawProgram = createProgram(gl, draw_vert_default2, draw_frag_default2);
     this.screenProgram = createProgram(gl, quad_vert_default2, screen_frag_default2);
     this.tileProgram = createProgram(gl, tile_quad_vert_default2, screen_frag_default2);
@@ -634,7 +630,6 @@ var MapGLWindRenderer = class {
       16,
       16
     );
-    this.opacity = 1;
     this.setView([0, 0, 1, 1]);
     this.map.on("moveend", () => {
       const bounds = this.map.getBounds();
@@ -812,7 +807,7 @@ var MapGLWindRenderer = class {
     gl.uniform2f(program.u_wind_res, this.windData.width, this.windData.height);
     gl.uniform2f(program.u_wind_min, this.windData.uMin, this.windData.vMin);
     gl.uniform2f(program.u_wind_max, this.windData.uMax, this.windData.vMax);
-    gl.uniform1f(program.u_speed_factor, 0.5);
+    gl.uniform1f(program.u_speed_factor, this.speedFactor);
     gl.uniform1f(program.u_drop_rate, this.dropRate);
     gl.uniform1f(program.u_drop_rate_bump, this.dropRateBump);
     gl.uniform4fv(program.u_bbox, this.bbox);
@@ -889,7 +884,7 @@ var MapGLWindRenderer = class {
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     gl.disable(gl.BLEND);
   }
-  renderToTile(gl, tileId) {
+  renderToTile(_gl, _tileId) {
     throw new Error(
       "Not implemented, this renderer is meant to be used only for the mercator mode"
     );

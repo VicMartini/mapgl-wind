@@ -9,7 +9,6 @@ import tileQuadVert from './shaders/tile_quad.vert.glsl';
 import screenFrag from './shaders/screen.frag.glsl';
 import updateFrag from './shaders/update.frag.glsl';
 
-import { LngLatBounds } from 'mapbox-gl';
 import { Map, ProjectionSpecification } from 'mapbox-gl';
 
 export interface RampColors {
@@ -83,9 +82,6 @@ export default class GlobeWindRenderer {
 
     this.width = width;
     this.height = height;
-
-    console.log('width', this.width);
-    console.log('height', this.height);
 
     this.fadeOpacity = fadeOpacity; // how fast the particle trails fade on each frame
     this.speedFactor = speedFactor; // how fast the particles move

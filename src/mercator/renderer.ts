@@ -75,20 +75,19 @@ export default class MapGLWindRenderer {
     colors: RampColors = defaultRampColors,
     opacity: number = 1.0,
     fadeOpacity: number = 0.996,
-    speedFactor: number = 0.35,
+    speedFactor: number = 0.55,
     dropRate: number = 0.003,
     dropRateBump: number = 0.01,
   ) {
     this.gl = gl;
     this.map = map;
-    console.log(fadeOpacity);
-    console.log(opacity);
-    console.log(colors);
+
     this.fadeOpacity = fadeOpacity; // how fast the particle trails fade on each frame
     this.speedFactor = speedFactor; // how fast the particles move
     this.dropRate = dropRate; // how often the particles move to a random place
     this.dropRateBump = dropRateBump; // drop rate increase relative to individual particle speed
     this.numParticles = 65536;
+    this.opacity = opacity;
 
     this.drawProgram = utils.createProgram(gl, drawVert, drawFrag);
     this.screenProgram = utils.createProgram(gl, quadVert, screenFrag);
@@ -107,8 +106,6 @@ export default class MapGLWindRenderer {
       16,
       16,
     );
-
-    this.opacity = 1.0;
 
     this.setView([0, 0, 1, 1]);
 
@@ -349,7 +346,7 @@ export default class MapGLWindRenderer {
     gl.uniform2f(program.u_wind_res, this.windData.width, this.windData.height);
     gl.uniform2f(program.u_wind_min, this.windData.uMin, this.windData.vMin);
     gl.uniform2f(program.u_wind_max, this.windData.uMax, this.windData.vMax);
-    gl.uniform1f(program.u_speed_factor, 0.5);
+    gl.uniform1f(program.u_speed_factor, this.speedFactor);
     gl.uniform1f(program.u_drop_rate, this.dropRate);
     gl.uniform1f(program.u_drop_rate_bump, this.dropRateBump);
     gl.uniform4fv(program.u_bbox, this.bbox);
@@ -470,7 +467,7 @@ export default class MapGLWindRenderer {
     gl.disable(gl.BLEND);
   }
 
-  public renderToTile(gl: WebGLRenderingContext, tileId: utils.TileID) {
+  public renderToTile(_gl: WebGLRenderingContext, _tileId: utils.TileID) {
     throw new Error(
       'Not implemented, this renderer is meant to be used only for the mercator mode',
     );
