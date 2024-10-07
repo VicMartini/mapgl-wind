@@ -107,23 +107,21 @@ export default class MapGLWindRenderer {
       16,
     );
 
-    this.setView([0, 0, 1, 1]);
+    this.updateViewAndResize();
+    this.map.on('moveend', this.updateViewAndResize.bind(this));
+  }
 
-    this.map.on('moveend', () => {
-      const bounds = this.map.getBounds();
-      const nw = bounds!.getNorthWest();
-      const se = bounds!.getSouthEast();
+  private updateViewAndResize() {
+    const bounds = this.map.getBounds();
+    const nw = bounds!.getNorthWest();
+    const se = bounds!.getSouthEast();
 
-      const minX = normalizeLongitude(nw.lng);
-      const minY = normalizeLatitude(nw.lat);
-      const maxX = normalizeLongitude(se.lng);
-      const maxY = normalizeLatitude(se.lat);
+    const minX = normalizeLongitude(nw.lng);
+    const minY = normalizeLatitude(nw.lat);
+    const maxX = normalizeLongitude(se.lng);
+    const maxY = normalizeLatitude(se.lat);
 
-      this.setView([minX, minY, maxX, maxY]);
-
-      this.resize();
-    });
-
+    this.setView([minX, minY, maxX, maxY]);
     this.resize();
   }
 
