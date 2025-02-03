@@ -65,6 +65,7 @@ export default class GlobeWindRenderer {
   private matrix?: Float32Array;
   private map: Map;
   private opacity: number;
+  private particleSize: number;
   constructor(
     gl: WebGL2RenderingContext,
     map: Map,
@@ -76,6 +77,7 @@ export default class GlobeWindRenderer {
     speedFactor: number = 0.25,
     dropRate: number = 0.003,
     dropRateBump: number = 0.01,
+    particleSize: number = 9.0,
   ) {
     this.gl = gl;
     this.map = map;
@@ -87,7 +89,7 @@ export default class GlobeWindRenderer {
     this.speedFactor = speedFactor; // how fast the particles move
     this.dropRate = dropRate; // how often the particles move to a random place
     this.dropRateBump = dropRateBump; // drop rate increase relative to individual particle speed
-
+    this.particleSize = particleSize;
     this.drawProgram = utils.createProgram(gl, drawVert, drawFrag);
     this.screenProgram = utils.createProgram(gl, quadVert, screenFrag);
     this.tileProgram = utils.createProgram(gl, tileQuadVert, screenFrag);
@@ -319,6 +321,8 @@ export default class GlobeWindRenderer {
     gl.uniform1i(program.u_color_ramp, 2);
 
     gl.uniform1f(program.u_particles_res, this.particleStateResolution);
+    console.log('this.particleSize', this.particleSize);
+    gl.uniform1f(program.u_point_size, this.particleSize);
     gl.uniform2f(program.u_wind_min, this.windData.uMin, this.windData.vMin);
     gl.uniform2f(program.u_wind_max, this.windData.uMax, this.windData.vMax);
     gl.uniformMatrix4fv(program.u_matrix, false, this.matrix);

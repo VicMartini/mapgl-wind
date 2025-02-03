@@ -4,7 +4,7 @@ attribute float a_index;
 
 uniform sampler2D u_particles;
 uniform float u_particles_res;
-
+uniform float u_point_size;
 uniform mat4 u_matrix;
 uniform vec4 u_bbox;
 
@@ -27,6 +27,6 @@ void main() {
     float s = sin(radians(v_particle_pos.y * 180.0 - 90.0));
     float y = 1.0 - (degrees(log((1.0 + s) / (1.0 - s))) / 360.0 + 1.0) / 2.0;
 
-    gl_PointSize = 8.0;
+    gl_PointSize = u_point_size;
     gl_Position = u_matrix * vec4(v_particle_pos.x, y, 0, 1);
 }
