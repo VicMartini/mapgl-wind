@@ -321,7 +321,6 @@ export default class GlobeWindRenderer {
     gl.uniform1i(program.u_color_ramp, 2);
 
     gl.uniform1f(program.u_particles_res, this.particleStateResolution);
-    console.log('this.particleSize', this.particleSize);
     gl.uniform1f(program.u_point_size, this.particleSize);
     gl.uniform2f(program.u_wind_min, this.windData.uMin, this.windData.vMin);
     gl.uniform2f(program.u_wind_max, this.windData.uMax, this.windData.vMax);
