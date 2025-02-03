@@ -34,6 +34,8 @@ interface WindLayerParams {
     headers?: Record<string, string>;
   };
   colors?: RampColors;
+  particleSize?: number;
+  onFPSUpdate?: (fps: number) => void;
 }
 
 export class WindLayer implements mapboxgl.CustomLayerInterface {
@@ -49,6 +51,7 @@ export class WindLayer implements mapboxgl.CustomLayerInterface {
   private windDataURL: string;
   private colors?: RampColors;
   private opacity: number;
+  private particleSize: number;
   private globeModeResolution: number;
   private globeModeNumberOfParticles: number;
   private mercatorModeNumberOfParticles: number;
@@ -57,6 +60,11 @@ export class WindLayer implements mapboxgl.CustomLayerInterface {
   private mercatorModeFadeOpacity: number;
   private globeModeSpeedFactor: number;
   private mercatorModeSpeedFactor: number;
+  private frameCount: number = 0;
+  private lastFpsUpdate: number = performance.now();
+  private currentFps: number = 0;
+  private fpsUpdateInterval: number = 1000;
+  private onFPSUpdate: ((fps: number) => void) | undefined;
   private transformRequest?: (url: string) => {
     url: string;
     headers?: Record<string, string>;
@@ -66,7 +74,7 @@ export class WindLayer implements mapboxgl.CustomLayerInterface {
     id = 'wind-layer',
     windDataURL,
     windMetadata: windData,
-    globeModeResolution = 10240,
+    globeModeResolution = 5120,
     globeModeNumberOfParticles = 65536,
     mercatorModeNumberOfParticles = 6553,
     globeModeFadeOpacity = 0.996,
@@ -76,8 +84,10 @@ export class WindLayer implements mapboxgl.CustomLayerInterface {
     maxzoom = 20,
     minzoom = 0,
     opacity = 1.0,
+    particleSize = 9.0,
     colors,
     transformRequest,
+    onFPSUpdate,
   }: WindLayerParams) {
     this.id = id;
     this.type = 'custom';
@@ -96,37 +106,63 @@ export class WindLayer implements mapboxgl.CustomLayerInterface {
     this.globeModeSpeedFactor = globeModeSpeedFactor;
     this.mercatorModeSpeedFactor = mercatorModeSpeedFactor;
     this.opacity = opacity;
+    this.particleSize = particleSize;
+    this.onFPSUpdate = onFPSUpdate;
+  }
+
+  private updateFPS(): void {
+    this.frameCount++;
+
+    const now = performance.now();
+    const elapsed = now - this.lastFpsUpdate;
+
+    if (elapsed >= this.fpsUpdateInterval) {
+      this.currentFps = Math.round((this.frameCount * 1000) / elapsed);
+      this.frameCount = 0;
+      this.lastFpsUpdate = now;
+      this.onFPSUpdate?.(this.currentFps);
+    }
   }
 
   public onAdd(map: mapboxgl.Map, gl: WebGL2RenderingContext) {
     this.map = map;
+    try {
+      this.mercatorRenderer = new MercatorWindRenderer(
+        gl,
+        map,
+        this.colors,
+        this.opacity,
+        this.mercatorModeFadeOpacity,
+        this.mercatorModeSpeedFactor,
+      );
 
-    this.mercatorRenderer = new MercatorWindRenderer(
-      gl,
-      map,
-      this.colors,
-      this.opacity,
-      this.mercatorModeFadeOpacity,
-      this.mercatorModeSpeedFactor,
-    );
+      this.globeRenderer = new GlobeWindRenderer(
+        gl,
+        map,
+        this.globeModeResolution,
+        this.globeModeResolution,
+        this.colors,
+        this.opacity,
+        this.globeModeFadeOpacity,
+        this.globeModeSpeedFactor,
+        0.003,
+        0.01,
+        this.particleSize,
+      );
 
-    this.globeRenderer = new GlobeWindRenderer(
-      gl,
-      map,
-      this.globeModeResolution,
-      this.globeModeResolution,
-      this.colors,
-      this.opacity,
-      this.globeModeFadeOpacity,
-      this.globeModeSpeedFactor,
-    );
+      this.map.setLayerZoomRange(
+        this.id,
+        this.minzoom ?? 0,
+        this.maxzoom ?? 20,
+      );
 
-    this.map.setLayerZoomRange(this.id, this.minzoom ?? 0, this.maxzoom ?? 20);
+      this.mercatorRenderer.numParticles = this.mercatorModeNumberOfParticles;
+      this.globeRenderer.numParticles = this.globeModeNumberOfParticles;
 
-    this.mercatorRenderer.numParticles = this.mercatorModeNumberOfParticles;
-    this.globeRenderer.numParticles = this.globeModeNumberOfParticles;
-
-    this.setWindTextureURL(this.windDataURL);
+      this.setWindTextureURL(this.windDataURL);
+    } catch (e) {
+      console.error('Failed to create renderers', e);
+    }
   }
 
   public async setWindTextureURL(url: string) {
@@ -140,14 +176,18 @@ export class WindLayer implements mapboxgl.CustomLayerInterface {
     image.src = URL.createObjectURL(blob);
 
     image.onload = () => {
-      if (!this.mercatorRenderer || !this.globeRenderer || !this.map) {
-        console.warn('Renderers or map not initialized');
-        return;
-      }
+      try {
+        if (!this.mercatorRenderer || !this.globeRenderer || !this.map) {
+          console.warn('Renderers or map not initialized');
+          return;
+        }
 
-      this.mercatorRenderer.setWind(this.windData, image);
-      this.globeRenderer.setWind(this.windData, image);
-      this.map.triggerRepaint();
+        this.mercatorRenderer.setWind(this.windData, image);
+        this.globeRenderer.setWind(this.windData, image);
+        this.map.triggerRepaint();
+      } catch (e) {
+        console.error('Failed to set wind texture', e);
+      }
     };
   }
 
@@ -187,6 +227,7 @@ export class WindLayer implements mapboxgl.CustomLayerInterface {
         centerInMercator,
         pixelsPerMeterRatio,
       );
+      this.updateFPS();
     } catch (error) {
       console.warn(
         'Warning: Mapbox tried to call prerender before the wind texture was loaded',
